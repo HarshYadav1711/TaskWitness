@@ -1,6 +1,6 @@
 # TaskWitness
 
-Evidence-first, human-controlled computer operator for a HulChul AI Engineering internship assessment. It will interpret recruiting goals, execute authorized work against synthetic business apps, and independently verify outcomes.
+Evidence-first, human-controlled computer operator for a HulChul AI Engineering internship assessment. It interprets recruiting goals, executes authorized work against synthetic business apps, and will independently verify outcomes.
 
 ## Assessment context
 
@@ -12,7 +12,7 @@ AI interprets intent. Deterministic software performs side effects. Independent 
 
 ## Current status
 
-**Phase 2 complete — deterministic browser execution.** TaskWitness operates TalentDesk and TeamMail through Playwright (Chromium). Follow-ups are saved as drafts only; autonomous send is deferred until the authority phase. No LLM yet.
+**Phase 3 complete — natural-language goal interpretation.** Plain-English goals become validated `TaskSpec` plans via an OpenAI-compatible model boundary, then local schema + policy checks. Deterministic Playwright workflow is unchanged. Messages are still never sent (deferred until Phase 4).
 
 ## Requirements
 
@@ -29,17 +29,23 @@ pip install -e ".[dev]"
 python -m playwright install chromium
 ```
 
-## Synthetic environment
+## Model configuration (live interpretation only)
 
-Reset:
+Copy `.env.example` values into your environment (do not commit `.env`):
+
+| Variable | Required for live NL? | Notes |
+|---|---|---|
+| `LLM_API_KEY` | Yes | Never commit a real key |
+| `LLM_MODEL` | Yes | Provider model id |
+| `LLM_BASE_URL` | No | Optional OpenAI-compatible base URL; empty → client default |
+
+**Model required:** `python -m taskwitness.interpret_goal`, `python -m taskwitness.interpret_eval`
+**Model not required:** `pytest`, `demo_env`, `taskwitness.browser_demo` (deterministic WorkflowConfig / TaskSpec JSON)
+
+## Synthetic environment
 
 ```bash
 python -m demo_env.seed --reset
-```
-
-Run TalentDesk + TeamMail:
-
-```bash
 python -m demo_env
 ```
 
@@ -48,11 +54,27 @@ python -m demo_env
 | TalentDesk | http://127.0.0.1:8000/talentdesk |
 | TeamMail | http://127.0.0.1:8000/teammail |
 
-## Phase 2 browser demo
+## Natural-language interpretation (Phase 3)
 
-Prerequisite: demo environment running (above).
+Interpret only (no browser):
 
-Headed (default — visible Chromium for demos):
+```bash
+python -m taskwitness.interpret_goal --goal "From candidates.csv, process shortlisted AI Engineering candidates in TalentDesk. Prepare an interview follow-up, move each matching candidate to Interview Ready, and ask me before sending any message."
+```
+
+Optional execute (READY plans only → existing Phase 2 workflow; never sends):
+
+```bash
+python -m taskwitness.interpret_goal --execute --goal "..."
+```
+
+Optional live fixture eval (no Playwright):
+
+```bash
+python -m taskwitness.interpret_eval
+```
+
+## Deterministic browser demo (no model)
 
 ```bash
 python -m taskwitness.browser_demo ^
@@ -62,16 +84,6 @@ python -m taskwitness.browser_demo ^
   --prepare-followups ^
   --headed
 ```
-
-Headless (tests/CI):
-
-```bash
-python -m taskwitness.browser_demo --headless --role "AI Engineering" --status "Shortlisted"
-```
-
-Optional `--slow-mo 150` adds Playwright presentation pacing for demos only (not used by correctness waits).
-
-The workflow never sends mail. `send_message` from a TaskSpec is deferred.
 
 ## Tests
 
@@ -97,8 +109,7 @@ All candidates and emails are fictional. Addresses use `example.test`. No real p
 
 ## Not yet implemented
 
-- Natural-language goal interpretation
-- Authority gates, pause/resume runtime
+- Authority gates, pause/resume runtime (approval UI)
 - Durable TaskWitness execution journal and recovery
 - Independent verification and evidence packs
 - Operator UI

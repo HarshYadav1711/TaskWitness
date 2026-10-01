@@ -70,6 +70,8 @@ Implement only the phase explicitly requested. Do not advance automatically.
 
 ## Phase 3 — Natural-language goal interpretation
 
+**Status:** Complete
+
 **Objective:** Parse plain-English goals into validated `TaskSpec` plans.
 
 **Planned work:** Configurable OpenAI-compatible adapter; prompt constrained to schema fields; reject invalid output at the Pydantic boundary.

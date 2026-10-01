@@ -86,9 +86,9 @@ Optimize for a strong, understandable, reliable prototype—not maximum feature 
 
 ## Current implementation status
 
-**Phase 2 complete — deterministic browser execution.**
+**Phase 3 complete — natural-language goal interpretation.**
 
-TalentDesk and TeamMail are operated through Playwright Chromium. Candidate selection comes from `candidates.csv`. Follow-ups are drafts only. No LLM, journal, authority UI, or independent verification subsystem yet.
+Plain-English goals are interpreted into validated `TaskSpec` plans (schema + policy). Deterministic Playwright execution remains separate. No approval UI, journal, or independent verification subsystem yet.
 
 ## Explicitly out of scope
 

@@ -68,7 +68,7 @@ Operating loop: **Understand → Execute → Verify**.
 | Domain schemas (`TaskSpec`, authority, run state) | Typed contract | **Implemented (Phase 0)** |
 | Synthetic TalentDesk / TeamMail | Controlled apps | **Implemented (Phase 1)** |
 | Playwright executor | Visible browser ops | **Implemented (Phase 2)** |
-| Goal interpreter | NL → `TaskSpec` | Not implemented |
+| Goal interpreter | NL → `TaskSpec` | **Implemented (Phase 3)** |
 | Authority / pause controls | Human gates | Not implemented |
 | SQLite TaskWitness journal | Durable effect history | Not implemented |
 | Verification + evidence | Postconditions + artifacts | Not implemented |
@@ -92,13 +92,24 @@ Operating loop: **Understand → Execute → Verify**.
 - Immediate post-action UI confirmation (e.g. stage notice, draft saved) is allowed for reliable automation. That is **not** the future independent verification/evidence subsystem.
 - Phase 2 workflows prepare TeamMail **drafts** only. Autonomous send is deferred until the authority phase.
 
+### Natural-language interpretation (Phase 3)
+
+- Narrow OpenAI-compatible client (`LLM_BASE_URL` optional, `LLM_API_KEY` + `LLM_MODEL` required for live interpretation).
+- Model output is **untrusted**. It never calls Playwright, invents selectors, or proves success.
+- Flow: goal → model JSON → local envelope parse → `TaskSpec.model_validate` → deterministic environment policy → `InterpretationResult`.
+- Only READY `TaskSpec` values may hand off to the existing Phase 2 workflow (`config_from_taskspec` → `RecruitingWorkflow`).
+- Ambiguous goals return `needs_clarification` (no execution). Policy rejects unsafe sources/roles/stages without silent repair.
+- Phase 3 execution still defers all `send_message` and false-authority `set_stage` (approval UI is Phase 4).
+
 ## Technology decisions
 
 **Python 3.12** — one primary language for automation and typed AI-adjacent workflows; strong fit for Playwright and assessment ownership.
 
-**Pydantic v2** — model/planner output is untrusted; strict schemas form the boundary before execution.
+**Pydantic v2** — model/planner output is untrusted; strict schemas form the boundary before execution. Provider structured output does not replace local validation.
 
 **Playwright** — visible application execution; direct automation keeps selectors, actions, and failures explicit; avoids opaque autonomous browser-agent frameworks.
+
+**openai (official client)** — minimal OpenAI-compatible adapter for intent interpretation only. No LangChain/LangGraph/agent frameworks.
 
 **SQLite** — used for synthetic TalentDesk/TeamMail state; planned separately later for the TaskWitness execution journal. No extra database infrastructure.
 
@@ -108,7 +119,7 @@ Operating loop: **Understand → Execute → Verify**.
 
 **Uvicorn** — local ASGI server for the demo environment.
 
-**LLM (planned)** — interpretation of plain-English intent only; not source of execution truth, authority, or completion truth.
+**LLM** — interpretation of plain-English intent only; not source of execution truth, authority, or completion truth.
 
 ## Data/state flow
 

@@ -4,25 +4,23 @@ Current status: this note is being completed alongside implementation and will b
 
 ## Problem and approach
 
-TaskWitness addresses a controlled recruiting-ops workflow where a plain-English goal must become authorized, deterministic computer operations with independent verification. Phase 0 locked the typed contract. Phase 1 added synthetic TalentDesk/TeamMail. Phase 2 adds deterministic Playwright operation of those apps through their visible UIs.
-
-Controlled synthetic applications are used so the assessment can demonstrate visible multi-step computer use without production ATS/email integrations, real candidate data, or outbound mail risk.
+TaskWitness addresses a controlled recruiting-ops workflow where a plain-English goal must become authorized, deterministic computer operations with independent verification. Phase 0 locked the typed contract. Phase 1 added synthetic apps. Phase 2 added Playwright operation. Phase 3 adds natural-language interpretation into the same `TaskSpec` boundary.
 
 ## Architecture decisions
 
-Documented in `docs/ARCHITECTURE.md`. Direct Playwright was chosen instead of a browser-agent framework so every click/fill/assertion stays explicit, reviewable, and testable. LLM interpretation is intentionally absent in Phase 2: the browser workflow is driven by explicit `WorkflowConfig` / optional TaskSpec mapping, proving computer operation before adding untrusted model output. UI side effects (stage changes, draft saves) must go through Playwright adapters—not SQLite or internal mutation helpers.
+AI is used only to interpret intent. The deterministic workflow remains separate and is never driven by raw model text. Even with provider JSON mode, local Pydantic `TaskSpec` validation is required because provider structure is not a trust boundary. Ambiguous goals stop with clarification instead of guessing capabilities. LangChain/LangGraph were not introduced: a thin OpenAI-compatible client plus explicit policy code is enough for this assessment. Authority remains a separate field from requested actions so “ask before send/stage” stays representable without dropping the action.
 
 ## Reliability and recovery
 
-TeamMail supports unique `operation_id` and rejects duplicate sent records for the same id. Phase 2 reuses an existing draft when the same deterministic operation id already appears. Ambiguous-send recovery and the TaskWitness journal are not implemented yet.
+TeamMail supports unique `operation_id`. Phase 2/3 reuses existing drafts for the same operation id. Ambiguous-send recovery and the TaskWitness journal are not implemented yet.
 
 ## Human control and authority
 
-`TaskSpec.actions` and `TaskSpec.authority` are independent. Phase 2 never autonomously sends mail; `send_message` is deferred until the authority phase. Runtime approval gates are not implemented yet.
+Requested actions and authority flags are independent. Phase 3 may interpret `authority.send_message=true`, but execution still defers all sends until Phase 4. False `change_stage` authority keeps stage mutation deferred.
 
 ## Verification
 
-Immediate UI confirmation after an action (e.g. “Draft saved”) supports reliable automation. The future independent postcondition/evidence subsystem is not implemented yet.
+Immediate UI confirmation supports automation reliability. Independent postcondition/evidence verification is not implemented yet.
 
 ## Personal contribution
 
@@ -34,8 +32,8 @@ _To be completed for submission._
 
 ## Limitations
 
-Phase 2: deterministic browser workflow only. No NL interpreter, authority UI, journal, or evidence packs. Assessment is intentionally time-boxed.
+No approval UI, journal, or evidence packs yet. Live interpretation quality depends on the configured model; unit tests use a fake client and do not claim live accuracy percentages.
 
 ## What I would build next
 
-Phase 3 — natural-language goal interpretation into validated `TaskSpec`, per `docs/PHASES.md`.
+Phase 4 — authority gates and execution controls (approval / pause), per `docs/PHASES.md`.
