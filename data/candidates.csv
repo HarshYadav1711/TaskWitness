@@ -1,0 +1,7 @@
+candidate_id,name,email,role,status,current_stage
+CAND-001,Asha Verma,asha.verma@example.test,AI Engineering,Shortlisted,Phone Screen
+CAND-002,Jordan Lee,jordan.lee@example.test,AI Engineering,Shortlisted,Recruiter Review
+CAND-003,Priya Nair,priya.nair@example.test,Backend Engineering,Shortlisted,Phone Screen
+CAND-004,Marcus Chen,marcus.chen@example.test,Backend Engineering,Applied,Application Review
+CAND-005,Elena Rossi,elena.rossi@example.test,Backend Engineering,Shortlisted,Technical Screen
+CAND-006,Sam Okonkwo,sam.okonkwo@example.test,AI Engineering,Rejected,Closed

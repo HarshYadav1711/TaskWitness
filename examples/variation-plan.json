@@ -1,0 +1,13 @@
+{
+  "source_file": "data/candidates.csv",
+  "role": "Backend Engineering",
+  "candidate_status": "Shortlisted",
+  "actions": [
+    "prepare_followup"
+  ],
+  "target_stage": null,
+  "authority": {
+    "send_message": false,
+    "change_stage": false
+  }
+}

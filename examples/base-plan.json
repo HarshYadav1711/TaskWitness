@@ -1,0 +1,15 @@
+{
+  "source_file": "data/candidates.csv",
+  "role": "AI Engineering",
+  "candidate_status": "Shortlisted",
+  "actions": [
+    "prepare_followup",
+    "set_stage",
+    "send_message"
+  ],
+  "target_stage": "Interview Ready",
+  "authority": {
+    "send_message": false,
+    "change_stage": true
+  }
+}

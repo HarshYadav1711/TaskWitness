@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "taskwitness"
+version = "0.0.1"
+description = "Evidence-first, human-controlled computer operator (assessment prototype)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.7,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2,<9",
+]
+
+[tool.setuptools.packages.find]
+include = ["taskwitness*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
