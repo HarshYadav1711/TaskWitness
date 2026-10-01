@@ -51,4 +51,12 @@ Must show:
 
 ## Phase 0 note
 
-No visual identity lock-in yet. No elaborate design tokens. Room remains for deliberate refinement in the UI phase (Phase 7). Do not invent decorative polish ahead of operational need.
+No visual identity lock-in yet for the TaskWitness operator UI. No elaborate design tokens. Room remains for deliberate refinement in the UI phase (Phase 7). Do not invent decorative polish ahead of operational need.
+
+## Synthetic applications (Phase 1)
+
+TalentDesk and TeamMail are **business apps being operated**, not the TaskWitness control surface.
+
+- Shared restrained base stylesheet; distinct header accent only (green-leaning ATS vs slate mailbox).
+- Dense tables, explicit labels, real links/forms—no KPI cards, gradients, or chat-first layouts.
+- Stable `id` / `data-testid` only on workflow controls needed for later Playwright use.

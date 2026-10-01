@@ -26,6 +26,8 @@ Implement only the phase explicitly requested. Do not advance automatically.
 
 ## Phase 1 — Synthetic business applications
 
+**Status:** Complete
+
 **Objective:** Provide TalentDesk, TeamMail, and supporting fixtures as a controlled recruiting test environment.
 
 **Planned work:** Authored synthetic HTML/JS apps; local serving; seed data aligned with `candidates.csv`; documented test-only failure mode hook for later phases.

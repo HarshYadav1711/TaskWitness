@@ -63,18 +63,25 @@ Operating loop: **Understand → Execute → Verify**.
 
 ## Planned components
 
-| Component | Role | Phase 0 status |
+| Component | Role | Status |
 |---|---|---|
-| Domain schemas (`TaskSpec`, authority, run state) | Typed contract | **Implemented** |
-| Synthetic TalentDesk / TeamMail | Controlled apps | Not implemented |
+| Domain schemas (`TaskSpec`, authority, run state) | Typed contract | **Implemented (Phase 0)** |
+| Synthetic TalentDesk / TeamMail | Controlled apps | **Implemented (Phase 1)** |
 | Playwright executor | Visible browser ops | Not implemented |
 | Goal interpreter | NL → `TaskSpec` | Not implemented |
 | Authority / pause controls | Human gates | Not implemented |
-| SQLite journal | Durable effect history | Not implemented |
+| SQLite TaskWitness journal | Durable effect history | Not implemented |
 | Verification + evidence | Postconditions + artifacts | Not implemented |
-| FastAPI + HTML/CSS/JS UI | Local operator surface | Not implemented |
+| FastAPI + HTML/CSS/JS operator UI | Local operator surface | Not implemented |
 
-None of the later components above are implemented in Phase 0.
+### Synthetic applications (Phase 1)
+
+- One FastAPI process hosts two distinct surfaces: `/talentdesk` and `/teammail`.
+- One process was chosen to keep the assessment local and simple; the apps remain separate products with separate responsibilities and UI chrome.
+- Persistence: SQLite via Python `sqlite3` at `demo_env/demo_env.sqlite3` (override with `DEMO_ENV_DB`).
+- Demo app state is **not** the future TaskWitness execution journal. Journals belong to later phases and must stay conceptually separate.
+- TeamMail stores an optional unique `operation_id` for later duplicate-safe recovery. A test-only one-shot flag `fail_after_send_commit_once` can interrupt acknowledgement after a successful local send commit; disabled by default.
+- FastAPI here serves only the synthetic apps—not a TaskWitness operator/control API.
 
 ## Technology decisions
 
@@ -84,11 +91,13 @@ None of the later components above are implemented in Phase 0.
 
 **Playwright (planned)** — visible application execution is required; direct automation keeps selectors, actions, and failures explicit; avoids opaque autonomous browser-agent frameworks.
 
-**SQLite (planned)** — durable execution journal without extra infrastructure.
+**SQLite** — used now for synthetic TalentDesk/TeamMail state; planned separately later for the TaskWitness execution journal. No extra database infrastructure.
 
-**FastAPI (planned)** — local operator/control API; lightweight; no distributed service architecture.
+**FastAPI** — hosts the Phase 1 synthetic apps today; planned later for the local operator/control API. Still no distributed service architecture.
 
-**HTML/CSS/JS (planned)** — operator UI is small; React would add assessment overhead without proportional value.
+**HTML/CSS/JS** — authored server-rendered pages for TalentDesk/TeamMail; React would add assessment overhead without proportional value. Operator UI remains later.
+
+**Uvicorn** — local ASGI server for the demo environment.
 
 **LLM (planned)** — interpretation of plain-English intent only; not source of execution truth, authority, or completion truth.
 

@@ -10,15 +10,22 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "pydantic>=2.7,<3",
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.32,<1",
+  "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.2,<9",
+  "httpx>=0.27,<1",
 ]
 
 [tool.setuptools.packages.find]
-include = ["taskwitness*"]
+include = ["taskwitness*", "demo_env*"]
+
+[tool.setuptools.package-data]
+demo_env = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

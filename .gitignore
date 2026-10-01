@@ -12,3 +12,5 @@ htmlcov/
 Thumbs.db
 .idea/
 .vscode/
+*.sqlite3
+demo_env/demo_env.sqlite3

@@ -86,9 +86,9 @@ Optimize for a strong, understandable, reliable prototype—not maximum feature 
 
 ## Current implementation status
 
-**Phase 0 — foundation and contracts.**
+**Phase 1 complete — synthetic business applications.**
 
-Documentation, typed `TaskSpec`, synthetic fixtures, and schema tests only. No browser operation, apps, journal, LLM client, or operator UI yet.
+TalentDesk and TeamMail are locally runnable with SQLite-backed state seeded from `data/candidates.csv`. Phase 0 contracts remain in place. No TaskWitness browser operator, journal, LLM client, or operator UI yet.
 
 ## Explicitly out of scope
 

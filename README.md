@@ -12,13 +12,13 @@ AI interprets intent. Deterministic software performs side effects. Independent 
 
 ## Current status
 
-**Phase 0 — foundation and contracts.** Documentation, typed `TaskSpec`, synthetic candidate fixtures, and schema tests. No application operator yet.
+**Phase 1 complete — synthetic business applications.** TalentDesk and TeamMail run locally with durable SQLite state, seed/reset, and schema contracts from Phase 0. TaskWitness browser automation is not implemented yet.
 
 ## Requirements
 
 - Python 3.12+
 
-## Setup and tests
+## Setup
 
 ```bash
 python -m venv .venv
@@ -26,10 +26,34 @@ python -m venv .venv
 # Unix:    source .venv/bin/activate
 pip install -U pip setuptools wheel
 pip install -e ".[dev]"
-python -m pytest -q
 ```
 
-If editable install is unavailable, `pip install "pydantic>=2.7,<3" "pytest>=8.2,<9"` is enough for Phase 0; pytest uses `pythonpath = ["."]`.
+## Synthetic environment
+
+Reset (reloads `data/candidates.csv`, clears TeamMail):
+
+```bash
+python -m demo_env.seed --reset
+```
+
+Run TalentDesk + TeamMail (one FastAPI process):
+
+```bash
+python -m demo_env
+```
+
+| Application | URL |
+|---|---|
+| TalentDesk | http://127.0.0.1:8000/talentdesk |
+| TeamMail | http://127.0.0.1:8000/teammail |
+
+TeamMail accepts only `@example.test` recipients and never delivers external mail.
+
+## Tests
+
+```bash
+python -m pytest -q
+```
 
 ## Documentation
 
@@ -49,11 +73,10 @@ All candidates and emails are fictional. Addresses use `example.test`. No real p
 
 ## Not yet implemented
 
-- TalentDesk / TeamMail synthetic applications
-- Playwright browser execution
+- Playwright browser execution by TaskWitness
 - Natural-language goal interpretation
 - Authority gates, pause/resume runtime
-- Durable journal and recovery
+- Durable TaskWitness execution journal and recovery
 - Independent verification and evidence packs
 - Operator UI
-- Assignment scenario harness beyond schema tests
+- Assignment scenario harness beyond demo-env and schema tests

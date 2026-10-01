@@ -1,0 +1,17 @@
+/* TeamMail — minimal internal mailbox */
+
+.skin-teammail .teammail-header {
+  border-top: 3px solid #3a4554;
+}
+
+.skin-teammail .mail-nav a {
+  margin-left: 0.9rem;
+}
+
+.skin-teammail .compose-form {
+  max-width: 40rem;
+}
+
+.skin-teammail .app-name {
+  color: #3a4554;
+}

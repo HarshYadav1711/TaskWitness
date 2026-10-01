@@ -4,15 +4,17 @@ Current status: this note is being completed alongside implementation and will b
 
 ## Problem and approach
 
-TaskWitness addresses a controlled recruiting-ops workflow where a plain-English goal must become authorized, deterministic computer operations with independent verification. Phase 0 locks context, architecture, and the typed task contract before any side-effecting product code.
+TaskWitness addresses a controlled recruiting-ops workflow where a plain-English goal must become authorized, deterministic computer operations with independent verification. Phase 0 locked context, architecture, and the typed task contract. Phase 1 adds synthetic TalentDesk and TeamMail so later browser operation has real, inspectable application state.
+
+Controlled synthetic applications are used so the assessment can demonstrate visible multi-step computer use without production ATS/email integrations, real candidate data, or outbound mail risk.
 
 ## Architecture decisions
 
-Documented in `docs/ARCHITECTURE.md`. Phase 0 implements only the Pydantic `TaskSpec` boundary (intent + separate authority). Later: Playwright for visible execution, SQLite journal, FastAPI + HTML UI, LLM for interpretation only.
+Documented in `docs/ARCHITECTURE.md`. One FastAPI process hosts two app surfaces; SQLite (`sqlite3`) holds demo-app state only. That store is intentionally separate from the future TaskWitness execution journal. No production Gmail/Outlook/ATS connectors.
 
 ## Reliability and recovery
 
-Planned: journalled effects; inspect-before-retry on ambiguous outcomes; no duplicate sends. Not implemented yet.
+TeamMail supports unique `operation_id` and rejects duplicate sent records for the same id. A test-only one-shot `fail_after_send_commit_once` can interrupt acknowledgement after commit. TaskWitness recovery logic is not implemented yet.
 
 ## Human control and authority
 
@@ -32,8 +34,8 @@ _To be completed for submission._
 
 ## Limitations
 
-Phase 0 only: no browser operator, apps, journal, or UI. Assessment is intentionally time-boxed.
+Phase 1: synthetic apps only. No TaskWitness browser operator, journal, interpreter, or operator UI. Assessment is intentionally time-boxed.
 
 ## What I would build next
 
-Phase 1 — synthetic TalentDesk and TeamMail environment, per `docs/PHASES.md`.
+Phase 2 — deterministic Playwright execution against TalentDesk/TeamMail, per `docs/PHASES.md`.

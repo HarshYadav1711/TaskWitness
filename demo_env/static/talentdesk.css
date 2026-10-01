@@ -1,0 +1,33 @@
+/* TalentDesk — compact recruiting ops tool */
+
+.skin-talentdesk .talentdesk-header {
+  border-top: 3px solid #2f4a3c;
+}
+
+.skin-talentdesk .cell-role {
+  font-weight: 600;
+}
+
+.skin-talentdesk .cell-status[data-status="Shortlisted"] {
+  background: #e4ebe6;
+  padding: 0.1rem 0.35rem;
+}
+
+.skin-talentdesk .cell-status[data-status="Rejected"] {
+  color: #7a2e2e;
+}
+
+.skin-talentdesk .cell-stage {
+  font-family: "IBM Plex Mono", "Consolas", monospace;
+  font-size: 0.9rem;
+}
+
+.skin-talentdesk .stage-form {
+  max-width: 28rem;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+
+.skin-talentdesk .stage-form label {
+  grid-column: 1 / -1;
+}
