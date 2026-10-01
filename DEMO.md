@@ -2,9 +2,10 @@
 
 ## Preconditions
 
-- Phase 1 complete: TalentDesk and TeamMail available locally.
+- Phase 2 complete: TalentDesk/TeamMail + Playwright workflow available.
 - Use synthetic data only (`data/candidates.csv`, `example.test` addresses).
-- Reset before each scenario:
+- Install Chromium once: `python -m playwright install chromium`
+- Reset and start apps before each scenario:
 
 ```bash
 python -m demo_env.seed --reset
@@ -14,43 +15,56 @@ python -m demo_env
 - TalentDesk: http://127.0.0.1:8000/talentdesk
 - TeamMail: http://127.0.0.1:8000/teammail
 
-Later phases are still required for automated TaskWitness operation, authority UI, journal/recovery, verification/evidence, and the operator UI.
+## Deterministic headed browser run (Phase 2)
+
+In a second terminal (demo server already running):
+
+```bash
+python -m taskwitness.browser_demo ^
+  --role "AI Engineering" ^
+  --status "Shortlisted" ^
+  --target-stage "Interview Ready" ^
+  --prepare-followups ^
+  --headed ^
+  --slow-mo 100
+```
+
+Expected: Chromium opens; TalentDesk filter/detail/stage updates; TeamMail compose + draft save for matching candidates; **no sends**.
 
 ## Scenario 1 — Base workflow
 
 **Goal (approx.):** From `candidates.csv`, process shortlisted AI Engineering candidates. Prepare interview follow-ups, move matching candidates to Interview Ready, ask before sending any message.
 
-**Expected behavior (once TaskWitness execution exists):** Matching candidates identified; TalentDesk opened and stages updated when authorized; TeamMail drafts prepared; send gated on approval; postconditions verified; evidence produced.
+**Phase 2 behavior:** Stage updates + draft preparation only. Sending awaits the authority phase.
 
-**Manual Phase 1 check:** Filter AI Engineering / Shortlisted candidates in TalentDesk; change a stage; compose and save a TeamMail draft.
-
-**Fixture plan:** `examples/base-plan.json`
+**Fixture plan:** `examples/base-plan.json` (optional `--from-taskspec`; `send_message` deferred).
 
 ## Scenario 2 — Goal variation
 
 **Goal (approx.):** Process shortlisted Backend Engineering candidates. Prepare follow-ups only. Do not send messages and do not change stages.
 
-**Expected behavior:** Same codebase; different goal/plan only. Follow-ups prepared; no stage changes; no sends.
+```bash
+python -m taskwitness.browser_demo --role "Backend Engineering" --status "Shortlisted" --prepare-followups --headed
+```
+
+(Omit `--target-stage` for no stage changes.)
 
 **Fixture plan:** `examples/variation-plan.json`
 
 ## Scenario 3 — Failure and recovery
 
-**Expected behavior (later phases):** Send is attempted; message persists; acknowledgement is interrupted. Operator does not immediately retry Send. Inspection finds the existing message; duplicate retry suppressed; run records recovery.
+**Expected behavior (later phases):** Ambiguous send acknowledgement; inspect before retry; suppress duplicate send.
 
-TeamMail’s test-only `fail_after_send_commit_once` seam exists for that future demo; TaskWitness recovery is not implemented in Phase 1.
+TeamMail’s test-only fault seam exists; TaskWitness recovery is not implemented in Phase 2.
 
 ## Evidence to show
 
-- Visible application interaction (TaskWitness automation: later).
-- Manual Phase 1: TalentDesk stage change and TeamMail Sent inspection.
-- Execution trace / run state including approval and recovery when applicable (later).
-- Independent verification status (later).
+- Visible Chromium interaction with TalentDesk and TeamMail.
+- Drafts created; Sent empty for the Phase 2 workflow.
+- Structured JSON result from `browser_demo`.
 
 ## Cleanup/reset
 
 ```bash
 python -m demo_env.seed --reset
 ```
-
-Restores candidates from `data/candidates.csv` and clears TeamMail drafts/sent messages.

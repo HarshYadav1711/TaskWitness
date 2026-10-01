@@ -67,7 +67,7 @@ Operating loop: **Understand → Execute → Verify**.
 |---|---|---|
 | Domain schemas (`TaskSpec`, authority, run state) | Typed contract | **Implemented (Phase 0)** |
 | Synthetic TalentDesk / TeamMail | Controlled apps | **Implemented (Phase 1)** |
-| Playwright executor | Visible browser ops | Not implemented |
+| Playwright executor | Visible browser ops | **Implemented (Phase 2)** |
 | Goal interpreter | NL → `TaskSpec` | Not implemented |
 | Authority / pause controls | Human gates | Not implemented |
 | SQLite TaskWitness journal | Durable effect history | Not implemented |
@@ -83,17 +83,26 @@ Operating loop: **Understand → Execute → Verify**.
 - TeamMail stores an optional unique `operation_id` for later duplicate-safe recovery. A test-only one-shot flag `fail_after_send_commit_once` can interrupt acknowledgement after a successful local send commit; disabled by default.
 - FastAPI here serves only the synthetic apps—not a TaskWitness operator/control API.
 
+### Deterministic browser execution (Phase 2)
+
+- Playwright Chromium operates TalentDesk/TeamMail through visible UI controls only.
+- Browser adapters (`TalentDeskBrowser`, `TeamMailBrowser`) expose domain operations; Playwright stays inside that boundary.
+- Candidate selection is read from `data/candidates.csv` via `candidate_source` — never from `demo_env` SQLite.
+- TaskWitness production browser/workflow code must not import `demo_env.db` or open `demo_env.sqlite3` to mutate or decide business state.
+- Immediate post-action UI confirmation (e.g. stage notice, draft saved) is allowed for reliable automation. That is **not** the future independent verification/evidence subsystem.
+- Phase 2 workflows prepare TeamMail **drafts** only. Autonomous send is deferred until the authority phase.
+
 ## Technology decisions
 
 **Python 3.12** — one primary language for automation and typed AI-adjacent workflows; strong fit for Playwright and assessment ownership.
 
 **Pydantic v2** — model/planner output is untrusted; strict schemas form the boundary before execution.
 
-**Playwright (planned)** — visible application execution is required; direct automation keeps selectors, actions, and failures explicit; avoids opaque autonomous browser-agent frameworks.
+**Playwright** — visible application execution; direct automation keeps selectors, actions, and failures explicit; avoids opaque autonomous browser-agent frameworks.
 
-**SQLite** — used now for synthetic TalentDesk/TeamMail state; planned separately later for the TaskWitness execution journal. No extra database infrastructure.
+**SQLite** — used for synthetic TalentDesk/TeamMail state; planned separately later for the TaskWitness execution journal. No extra database infrastructure.
 
-**FastAPI** — hosts the Phase 1 synthetic apps today; planned later for the local operator/control API. Still no distributed service architecture.
+**FastAPI** — hosts the synthetic apps today; planned later for the local operator/control API. Still no distributed service architecture.
 
 **HTML/CSS/JS** — authored server-rendered pages for TalentDesk/TeamMail; React would add assessment overhead without proportional value. Operator UI remains later.
 

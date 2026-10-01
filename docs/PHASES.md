@@ -48,6 +48,8 @@ Implement only the phase explicitly requested. Do not advance automatically.
 
 ## Phase 2 — Deterministic browser execution
 
+**Status:** Complete
+
 **Objective:** Execute recruiting workflow steps through Playwright against the synthetic apps.
 
 **Planned work:** Deterministic operators for inspect/update stage and prepare/send mail; visible interaction; no LLM in the loop yet (drive from validated plans/fixtures).

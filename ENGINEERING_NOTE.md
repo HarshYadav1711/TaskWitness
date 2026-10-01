@@ -4,25 +4,25 @@ Current status: this note is being completed alongside implementation and will b
 
 ## Problem and approach
 
-TaskWitness addresses a controlled recruiting-ops workflow where a plain-English goal must become authorized, deterministic computer operations with independent verification. Phase 0 locked context, architecture, and the typed task contract. Phase 1 adds synthetic TalentDesk and TeamMail so later browser operation has real, inspectable application state.
+TaskWitness addresses a controlled recruiting-ops workflow where a plain-English goal must become authorized, deterministic computer operations with independent verification. Phase 0 locked the typed contract. Phase 1 added synthetic TalentDesk/TeamMail. Phase 2 adds deterministic Playwright operation of those apps through their visible UIs.
 
 Controlled synthetic applications are used so the assessment can demonstrate visible multi-step computer use without production ATS/email integrations, real candidate data, or outbound mail risk.
 
 ## Architecture decisions
 
-Documented in `docs/ARCHITECTURE.md`. One FastAPI process hosts two app surfaces; SQLite (`sqlite3`) holds demo-app state only. That store is intentionally separate from the future TaskWitness execution journal. No production Gmail/Outlook/ATS connectors.
+Documented in `docs/ARCHITECTURE.md`. Direct Playwright was chosen instead of a browser-agent framework so every click/fill/assertion stays explicit, reviewable, and testable. LLM interpretation is intentionally absent in Phase 2: the browser workflow is driven by explicit `WorkflowConfig` / optional TaskSpec mapping, proving computer operation before adding untrusted model output. UI side effects (stage changes, draft saves) must go through Playwright adapters—not SQLite or internal mutation helpers.
 
 ## Reliability and recovery
 
-TeamMail supports unique `operation_id` and rejects duplicate sent records for the same id. A test-only one-shot `fail_after_send_commit_once` can interrupt acknowledgement after commit. TaskWitness recovery logic is not implemented yet.
+TeamMail supports unique `operation_id` and rejects duplicate sent records for the same id. Phase 2 reuses an existing draft when the same deterministic operation id already appears. Ambiguous-send recovery and the TaskWitness journal are not implemented yet.
 
 ## Human control and authority
 
-`TaskSpec.actions` and `TaskSpec.authority` are independent. Autonomous send may be unauthorized while still present as requested work, requiring later approval. Runtime gates not implemented yet.
+`TaskSpec.actions` and `TaskSpec.authority` are independent. Phase 2 never autonomously sends mail; `send_message` is deferred until the authority phase. Runtime approval gates are not implemented yet.
 
 ## Verification
 
-Completion will require postconditions against application state—not LLM claims or exception-free returns. Not implemented yet.
+Immediate UI confirmation after an action (e.g. “Draft saved”) supports reliable automation. The future independent postcondition/evidence subsystem is not implemented yet.
 
 ## Personal contribution
 
@@ -34,8 +34,8 @@ _To be completed for submission._
 
 ## Limitations
 
-Phase 1: synthetic apps only. No TaskWitness browser operator, journal, interpreter, or operator UI. Assessment is intentionally time-boxed.
+Phase 2: deterministic browser workflow only. No NL interpreter, authority UI, journal, or evidence packs. Assessment is intentionally time-boxed.
 
 ## What I would build next
 
-Phase 2 — deterministic Playwright execution against TalentDesk/TeamMail, per `docs/PHASES.md`.
+Phase 3 — natural-language goal interpretation into validated `TaskSpec`, per `docs/PHASES.md`.

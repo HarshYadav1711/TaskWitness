@@ -517,21 +517,24 @@ def create_app() -> FastAPI:
             conn.close()
         rows = []
         for m in drafts:
+            op = m["operation_id"] or ""
             rows.append(
                 f"""
-                <tr data-testid="draft-row" data-message-id="{_esc(m['message_id'])}">
+                <tr data-testid="draft-row" data-message-id="{_esc(m['message_id'])}"
+                    data-operation-id="{_esc(op)}">
                   <td><a href="/teammail/compose?message_id={_esc(m['message_id'])}"
                          data-testid="draft-link-{_esc(m['message_id'])}">
                          {_esc(m['message_id'])}</a></td>
                   <td>{_esc(m['recipient'])}</td>
                   <td>{_esc(m['subject'])}</td>
+                  <td data-testid="draft-operation-id">{_esc(op or '—')}</td>
                   <td>draft</td>
                   <td>{_esc(m['updated_at'])}</td>
                 </tr>
                 """
             )
         body_rows = "\n".join(rows) if rows else (
-            '<tr><td colspan="5" class="empty">No drafts.</td></tr>'
+            '<tr><td colspan="6" class="empty">No drafts.</td></tr>'
         )
         content = f"""
         {_teammail_header('Drafts')}
@@ -540,7 +543,7 @@ def create_app() -> FastAPI:
             <thead>
               <tr>
                 <th>Message ID</th><th>Recipient</th><th>Subject</th>
-                <th>Status</th><th>Updated</th>
+                <th>Operation ID</th><th>Status</th><th>Updated</th>
               </tr>
             </thead>
             <tbody>{body_rows}</tbody>

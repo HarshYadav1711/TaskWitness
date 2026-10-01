@@ -59,4 +59,5 @@ TalentDesk and TeamMail are **business apps being operated**, not the TaskWitnes
 
 - Shared restrained base stylesheet; distinct header accent only (green-leaning ATS vs slate mailbox).
 - Dense tables, explicit labels, real links/forms—no KPI cards, gradients, or chat-first layouts.
-- Stable `id` / `data-testid` only on workflow controls needed for later Playwright use.
+- Stable `id` / `data-testid` only on workflow controls needed for Playwright.
+- Drafts list exposes **Operation ID** so browser automation can locate logical follow-ups without database access.

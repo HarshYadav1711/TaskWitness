@@ -86,9 +86,9 @@ Optimize for a strong, understandable, reliable prototype—not maximum feature 
 
 ## Current implementation status
 
-**Phase 1 complete — synthetic business applications.**
+**Phase 2 complete — deterministic browser execution.**
 
-TalentDesk and TeamMail are locally runnable with SQLite-backed state seeded from `data/candidates.csv`. Phase 0 contracts remain in place. No TaskWitness browser operator, journal, LLM client, or operator UI yet.
+TalentDesk and TeamMail are operated through Playwright Chromium. Candidate selection comes from `candidates.csv`. Follow-ups are drafts only. No LLM, journal, authority UI, or independent verification subsystem yet.
 
 ## Explicitly out of scope
 

@@ -12,7 +12,7 @@ AI interprets intent. Deterministic software performs side effects. Independent 
 
 ## Current status
 
-**Phase 1 complete — synthetic business applications.** TalentDesk and TeamMail run locally with durable SQLite state, seed/reset, and schema contracts from Phase 0. TaskWitness browser automation is not implemented yet.
+**Phase 2 complete — deterministic browser execution.** TaskWitness operates TalentDesk and TeamMail through Playwright (Chromium). Follow-ups are saved as drafts only; autonomous send is deferred until the authority phase. No LLM yet.
 
 ## Requirements
 
@@ -26,17 +26,18 @@ python -m venv .venv
 # Unix:    source .venv/bin/activate
 pip install -U pip setuptools wheel
 pip install -e ".[dev]"
+python -m playwright install chromium
 ```
 
 ## Synthetic environment
 
-Reset (reloads `data/candidates.csv`, clears TeamMail):
+Reset:
 
 ```bash
 python -m demo_env.seed --reset
 ```
 
-Run TalentDesk + TeamMail (one FastAPI process):
+Run TalentDesk + TeamMail:
 
 ```bash
 python -m demo_env
@@ -47,7 +48,30 @@ python -m demo_env
 | TalentDesk | http://127.0.0.1:8000/talentdesk |
 | TeamMail | http://127.0.0.1:8000/teammail |
 
-TeamMail accepts only `@example.test` recipients and never delivers external mail.
+## Phase 2 browser demo
+
+Prerequisite: demo environment running (above).
+
+Headed (default — visible Chromium for demos):
+
+```bash
+python -m taskwitness.browser_demo ^
+  --role "AI Engineering" ^
+  --status "Shortlisted" ^
+  --target-stage "Interview Ready" ^
+  --prepare-followups ^
+  --headed
+```
+
+Headless (tests/CI):
+
+```bash
+python -m taskwitness.browser_demo --headless --role "AI Engineering" --status "Shortlisted"
+```
+
+Optional `--slow-mo 150` adds Playwright presentation pacing for demos only (not used by correctness waits).
+
+The workflow never sends mail. `send_message` from a TaskSpec is deferred.
 
 ## Tests
 
@@ -73,10 +97,8 @@ All candidates and emails are fictional. Addresses use `example.test`. No real p
 
 ## Not yet implemented
 
-- Playwright browser execution by TaskWitness
 - Natural-language goal interpretation
 - Authority gates, pause/resume runtime
 - Durable TaskWitness execution journal and recovery
 - Independent verification and evidence packs
 - Operator UI
-- Assignment scenario harness beyond demo-env and schema tests
