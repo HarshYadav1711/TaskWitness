@@ -114,6 +114,8 @@ Implement only the phase explicitly requested. Do not advance automatically.
 
 ## Phase 5 — Durable journal and failure recovery
 
+**Status:** Complete
+
 **Objective:** Persist effect history and safely recover from ambiguous outcomes.
 
 **Planned work:** SQLite journal; ambiguous-send recovery path (inspect before retry; suppress duplicates).

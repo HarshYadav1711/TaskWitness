@@ -70,7 +70,7 @@ Operating loop: **Understand → Execute → Verify**.
 | Playwright executor | Visible browser ops | **Implemented (Phase 2)** |
 | Goal interpreter | NL → `TaskSpec` | **Implemented (Phase 3)** |
 | Authority / pause controls | Human gates | **Implemented (Phase 4)** |
-| SQLite TaskWitness journal | Durable effect history | Not implemented |
+| SQLite TaskWitness journal | Durable effect history | **Implemented (Phase 5)** |
 | Verification + evidence | Postconditions + artifacts | Not implemented |
 | FastAPI + HTML/CSS/JS operator UI | Local operator surface | Not implemented |
 
@@ -109,9 +109,20 @@ Operating loop: **Understand → Execute → Verify**.
 - **RunControl** provides cooperative pause/resume via standard library synchronization. Pause stops at safe checkpoints (before next candidate / stage / draft / send)—not mid-Playwright click.
 - Precedence: `awaiting_approval` is its own halt; a pause requested during approval remains pending and is honored at the next checkpoint after approval resolves.
 - **Progress events** are an in-memory sink/callback stream (timestamp, run state, optional candidate/action, message) for tests and the future Phase 7 UI. Not durable event sourcing.
-- **TeamMail send** is a browser domain operation (`send_draft`) through the visible Send control. The draft's `operation_id` is preserved from draft → sent. Ambiguous acknowledgement is surfaced as unknown/failed without blind retry (Phase 5 owns recovery).
-- Control/approval/progress state is **in-memory only**. No TaskWitness SQLite journal yet.
+- **TeamMail send** is a browser domain operation (`send_draft`) through the visible Send control. The draft's `operation_id` is preserved from draft → sent.
+- Control/approval/progress state remains in-memory for operator interaction. Durable effect history lives in the TaskWitness journal (Phase 5).
 - Rejection leaves completed work intact and yields `PARTIAL` when requested work remains incomplete—not a false `FAILED`.
+
+### Durable journal and recovery (Phase 5)
+
+- Local SQLite journal at `.taskwitness/journal.sqlite3` (override `TASKWITNESS_JOURNAL`). Completely separate from `demo_env` persistence.
+- **Write-ahead:** plan action → mark `IN_PROGRESS` (commit) → only then invoke browser mutation.
+- **action_key** identifies the logical journaled effect within a run (stable hash of run_id + action_type + candidate + normalized payload). **operation_id** remains the TeamMail business identity used for Sent reconciliation.
+- Outcomes distinguish known success/failure from **UNKNOWN** (acknowledgement inconclusive). UNKNOWN is never treated as permission to blindly resend.
+- Recovery for UNKNOWN send: inspect visible Sent by `operation_id`. Exactly one match → `RECOVERED` (no retry). Zero conclusive matches → one controlled same-operation retry. Multiple matches or inspection unavailable → `BLOCKED`.
+- Recovery verification asks only whether this uncertain side effect already happened. Whole-goal completion verification is Phase 6.
+- `RunState.recovering` is used during target-state reconciliation. A recovered send counts as completed work for run completion semantics.
+- Approval precedes attempted-action journaling: reject → `REJECTED` with `attempt_count=0` (never `IN_PROGRESS`).
 
 ## Technology decisions
 

@@ -142,6 +142,13 @@ class TeamMailBrowser:
             return None
         return row.first.get_attribute("data-message-id")
 
+    def count_sent_by_operation_id(self, operation_id: str) -> int:
+        """Count Sent rows with the exact operation_id through the visible UI."""
+        self.open_sent()
+        return self.page.locator(
+            f'[data-testid="sent-row"][data-operation-id="{operation_id}"]'
+        ).count()
+
     def send_draft(
         self,
         message_id: str,

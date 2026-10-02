@@ -86,9 +86,9 @@ Optimize for a strong, understandable, reliable prototype—not maximum feature 
 
 ## Current implementation status
 
-**Phase 4 complete — human control and authority.**
+**Phase 5 complete — durable journal and safe recovery.**
 
-Validated `TaskSpec` plans execute through a control-aware workflow: authority checks, action-scoped human approval, cooperative pause/resume, and an in-memory progress event stream. TeamMail send runs through the visible UI when approved. Control state is not durable. No journal, independent verification, or final operator UI yet.
+Effectful workflow actions are write-ahead journaled locally. Ambiguous send acknowledgements are classified `UNKNOWN`, reconciled against visible TeamMail Sent state by stable `operation_id`, and recovered without blind retry. Independent goal verification / evidence packs and the final operator UI are not implemented yet.
 
 ## Explicitly out of scope
 

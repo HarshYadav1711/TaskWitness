@@ -1,0 +1,172 @@
+"""Phase 5 recovery development harness — ambiguous send + journal reconciliation.
+
+Not the final operator UI. Uses the synthetic TeamMail one-shot fault seam.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from dataclasses import asdict
+from pathlib import Path
+
+from taskwitness.control import AlwaysApprove, CallbackProgressSink, MultiplexProgressSink, print_progress
+from taskwitness.control.progress import InMemoryProgressCollector
+from taskwitness.journal import ActionState, Journal, default_journal_path
+from taskwitness.schemas import ActionType, Authority, RunState, TaskSpec
+from taskwitness.workflow import RecruitingWorkflow, config_from_taskspec, make_operation_id
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run TaskWitness Phase-5 ambiguous-send recovery demo. "
+            "Activates the synthetic TeamMail fail_after_send_commit_once fault."
+        )
+    )
+    parser.add_argument(
+        "--from-taskspec",
+        default="examples/base-plan.json",
+        help="TaskSpec JSON (default: base plan; send_message authority false).",
+    )
+    parser.add_argument("--base-url", default="http://127.0.0.1:8000")
+    parser.add_argument(
+        "--headed",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--slow-mo", type=int, default=0)
+    parser.add_argument(
+        "--journal",
+        default=None,
+        help="Journal SQLite path (default: .taskwitness/journal.sqlite3).",
+    )
+    parser.add_argument(
+        "--reset-journal",
+        action="store_true",
+        help="Wipe TaskWitness journal before running (does not reset demo_env).",
+    )
+    parser.add_argument(
+        "--arm-fault",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Arm demo_env fail_after_send_commit_once (test/setup only; default on).",
+    )
+    parser.add_argument(
+        "--single-candidate",
+        action="store_true",
+        help="Limit CSV filter to first matching candidate via a temp CSV rewrite.",
+    )
+    return parser
+
+
+def _arm_fault() -> None:
+    # Test/setup only — not TaskWitness production mutation of business state.
+    from demo_env.app import get_db_path
+    from demo_env.db import arm_fail_after_send_commit_once, connect
+
+    conn = connect(get_db_path())
+    try:
+        arm_fail_after_send_commit_once(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    print("Armed synthetic fault: fail_after_send_commit_once")
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    spec = TaskSpec.model_validate_json(
+        Path(args.from_taskspec).read_text(encoding="utf-8")
+    )
+    # Prefer prepare + send for a clear recovery demo when base plan includes stage.
+    # Keep the loaded TaskSpec authority intact (do not mutate).
+    original_authority = spec.authority.model_copy()
+
+    journal_path = Path(args.journal) if args.journal else default_journal_path()
+    journal = Journal(journal_path)
+    if args.reset_journal:
+        journal.reset()
+        print(f"Journal reset: {journal_path}")
+
+    if args.arm_fault:
+        _arm_fault()
+
+    config, _ = config_from_taskspec(
+        spec, headed=args.headed, base_url=args.base_url
+    )
+    config.slow_mo_ms = args.slow_mo
+
+    collector = InMemoryProgressCollector()
+    progress = MultiplexProgressSink(
+        collector,
+        CallbackProgressSink(print_progress),
+    )
+
+    print("TaskWitness Phase-5 recovery demo")
+    print(f"  taskspec={args.from_taskspec}")
+    print(f"  journal={journal_path}")
+    print(
+        f"  authority: change_stage={spec.authority.change_stage} "
+        f"send_message={spec.authority.send_message}"
+    )
+    print("  journal is local assessment state (separate from demo_env)")
+    print()
+
+    # Keep journal open across run for post-inspection (workflow would close owned journal).
+    result = RecruitingWorkflow(
+        config,
+        approval_provider=AlwaysApprove(),
+        progress=progress,
+        journal=journal,
+        close_journal=False,
+    ).run()
+
+    assert spec.authority == original_authority
+
+    send_actions = []
+    if result.run_id:
+        send_actions = [
+            a
+            for a in journal.list_actions(result.run_id)
+            if a.action_type == ActionType.send_message.value
+        ]
+
+    payload = {
+        "run_state": result.run_state.value,
+        "run_id": result.run_id,
+        "ok": result.ok,
+        "error": result.error,
+        "authority_unchanged": original_authority.model_dump(),
+        "candidates": [asdict(c) for c in result.candidate_results],
+        "send_actions": [
+            {
+                "action_key": a.action_key,
+                "candidate_id": a.candidate_id,
+                "operation_id": a.operation_id,
+                "state": a.state.value,
+                "attempt_count": a.attempt_count,
+                "recovery_note": a.recovery_note,
+                "last_error": a.last_error,
+            }
+            for a in send_actions
+        ],
+    }
+    print()
+    print(json.dumps(payload, indent=2))
+
+    journal.close()
+
+    if result.run_state in {RunState.completed, RunState.partial}:
+        # Prefer completed after recovery of all sends.
+        if send_actions and all(a.state is ActionState.recovered for a in send_actions):
+            return 0
+        if result.run_state == RunState.completed:
+            return 0
+        return 0
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

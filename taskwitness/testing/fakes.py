@@ -119,6 +119,15 @@ class FakeTeamMail:
         self._compose = None
         return message_id
 
+    def find_sent_by_operation_id(self, operation_id: str) -> str | None:
+        for mid, draft in self.sent.items():
+            if draft.operation_id == operation_id:
+                return mid
+        return None
+
+    def count_sent_by_operation_id(self, operation_id: str) -> int:
+        return sum(1 for d in self.sent.values() if d.operation_id == operation_id)
+
     def send_draft(
         self,
         message_id: str,

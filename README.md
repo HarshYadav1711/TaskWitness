@@ -12,7 +12,7 @@ AI interprets intent. Deterministic software performs side effects. Independent 
 
 ## Current status
 
-**Phase 4 complete — human control and authority.** Requested actions and authority remain separate. False-authority stage/send actions request human approval immediately before the side effect. Cooperative pause/resume and an in-memory progress stream are available. Control state is process-local (not durable). No final operator UI yet.
+**Phase 5 complete — durable journal and safe recovery.** Effectful actions are write-ahead journaled to a local TaskWitness SQLite file (separate from `demo_env`). Ambiguous TeamMail send acknowledgements become `UNKNOWN`, then reconcile against visible Sent state by `operation_id` before any retry. No final evidence pack or operator UI yet.
 
 ## Requirements
 
@@ -77,6 +77,25 @@ python -m taskwitness.control_demo --from-taskspec examples/base-plan.json --app
 
 Control/approval/pause state is **in-memory only** for this process. There is no durable journal and no final web operator UI yet.
 
+## Durable journal + recovery (Phase 5)
+
+Local assessment journal (not production persistence; not `demo_env` SQLite):
+
+| Setting | Default |
+|---|---|
+| Path | `.taskwitness/journal.sqlite3` |
+| Override | `TASKWITNESS_JOURNAL` |
+
+Ambiguous-send recovery demo (arms the synthetic one-shot fault, then reconciles Sent):
+
+```bash
+python -m demo_env.seed --reset
+python -m demo_env
+python -m taskwitness.recovery_demo --from-taskspec examples/base-plan.json --reset-journal --headed
+```
+
+Expected: draft → approval (if authority false) → Send persists → acknowledgement interrupted → journal `UNKNOWN` → inspect Sent → `RECOVERED` without a second Send.
+
 ## Natural-language interpretation (Phase 3)
 
 Interpret only (no browser):
@@ -128,6 +147,5 @@ All candidates and emails are fictional. Addresses use `example.test`. No real p
 
 ## Not yet implemented
 
-- Durable TaskWitness execution journal and ambiguous-outcome recovery
 - Independent verification and evidence packs
 - Final operator UI (Phase 7)

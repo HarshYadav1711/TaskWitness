@@ -333,10 +333,11 @@ def test_false_authority_stage_approved_mutates_through_talentdesk_ui(reset_demo
         conn.close()
 
 
-def test_phase4_does_not_blindly_retry_ambiguous_send(reset_demo):
-    """Ambiguous-send fault: Phase 4 surfaces unknown; does not re-click Send."""
+def test_phase5_ambiguous_send_recovers_without_retry(reset_demo, tmp_path):
+    """Ambiguous-send fault: journal UNKNOWN → inspect Sent → RECOVERED; attempt_count=1."""
     from demo_env.db import arm_fail_after_send_commit_once, connect, list_messages
     from taskwitness.control import AlwaysApprove
+    from taskwitness.journal import ActionState, Journal
     from taskwitness.schemas import ActionType, Authority, RunState, TaskSpec
     from taskwitness.workflow import config_from_taskspec
 
@@ -348,11 +349,74 @@ def test_phase4_does_not_blindly_retry_ambiguous_send(reset_demo):
     finally:
         conn.close()
 
-    # Single-candidate subset via Backend shortlisted first candidate only is harder;
-    # use AI Engineering but stop after first unknown — workflow continues to CAND-002.
-    # Arm only once, so CAND-001 hits the fault; assert that message was not sent twice.
+    # Single candidate for a focused recovery assertion.
+    single_csv = tmp_path / "one.csv"
+    single_csv.write_text(
+        "candidate_id,name,email,role,status,current_stage\n"
+        "CAND-001,Asha Verma,asha.verma@example.test,AI Engineering,Shortlisted,Phone Screen\n",
+        encoding="utf-8",
+    )
     spec = TaskSpec(
-        source_file=str(ROOT / "data" / "candidates.csv"),
+        source_file=str(single_csv),
+        role="AI Engineering",
+        candidate_status="Shortlisted",
+        actions=[ActionType.prepare_followup, ActionType.send_message],
+        target_stage=None,
+        authority=Authority(send_message=False, change_stage=False),
+    )
+    config, _ = config_from_taskspec(spec, headed=False, base_url=base_url)
+    journal = Journal(tmp_path / "recovery.sqlite3")
+    result = RecruitingWorkflow(
+        config,
+        approval_provider=AlwaysApprove(),
+        journal=journal,
+        close_journal=False,
+    ).run()
+
+    assert len(result.candidate_results) == 1
+    first = result.candidate_results[0]
+    assert first.send is not None
+    assert first.send.recovered is True
+    assert first.send.ok is True
+    assert first.send.attempt_count == 1
+    assert result.run_state == RunState.completed
+
+    action = journal.get_action(first.send.action_key)
+    assert action is not None
+    assert action.state is ActionState.recovered
+    assert action.attempt_count == 1
+    op = make_operation_id(candidate_id="CAND-001", role="AI Engineering")
+    assert action.operation_id == op
+
+    with BrowserSession(base_url=base_url, headed=False) as session:
+        mail = TeamMailBrowser(session)
+        assert mail.count_sent_by_operation_id(op) == 1
+
+    conn = connect(reset_demo["db_path"])
+    try:
+        sent = list_messages(conn, "sent")
+        matching = [m for m in sent if m["operation_id"] == op]
+        assert len(matching) == 1
+    finally:
+        conn.close()
+    journal.close()
+
+
+def test_phase5_clean_send_journal_succeeded(reset_demo, tmp_path):
+    from taskwitness.control import AlwaysApprove
+    from taskwitness.journal import ActionState, Journal
+    from taskwitness.schemas import ActionType, Authority, RunState, TaskSpec
+    from taskwitness.workflow import config_from_taskspec
+
+    base_url = reset_demo["base_url"]
+    single_csv = tmp_path / "one.csv"
+    single_csv.write_text(
+        "candidate_id,name,email,role,status,current_stage\n"
+        "CAND-001,Asha Verma,asha.verma@example.test,AI Engineering,Shortlisted,Phone Screen\n",
+        encoding="utf-8",
+    )
+    spec = TaskSpec(
+        source_file=str(single_csv),
         role="AI Engineering",
         candidate_status="Shortlisted",
         actions=[ActionType.prepare_followup, ActionType.send_message],
@@ -360,19 +424,22 @@ def test_phase4_does_not_blindly_retry_ambiguous_send(reset_demo):
         authority=Authority(send_message=True, change_stage=False),
     )
     config, _ = config_from_taskspec(spec, headed=False, base_url=base_url)
-    result = RecruitingWorkflow(config, approval_provider=AlwaysApprove()).run()
-
-    first = result.candidate_results[0]
-    assert first.send is not None
-    assert first.send.unknown is True
-    assert first.send.ok is False
-
-    conn = connect(reset_demo["db_path"])
-    try:
-        sent = list_messages(conn, "sent")
-        # Message persisted once (ambiguous ack); no duplicate for same operation.
-        op = make_operation_id(candidate_id="CAND-001", role="AI Engineering")
-        matching = [m for m in sent if m["operation_id"] == op]
-        assert len(matching) == 1
-    finally:
-        conn.close()
+    journal = Journal(tmp_path / "clean.sqlite3")
+    result = RecruitingWorkflow(
+        config,
+        approval_provider=AlwaysApprove(),
+        journal=journal,
+        close_journal=False,
+    ).run()
+    assert result.run_state == RunState.completed
+    send = result.candidate_results[0].send
+    assert send and send.ok and not send.recovered
+    assert send.attempt_count == 1
+    action = journal.get_action(send.action_key)
+    assert action is not None
+    assert action.state is ActionState.succeeded
+    op = make_operation_id(candidate_id="CAND-001", role="AI Engineering")
+    with BrowserSession(base_url=base_url, headed=False) as session:
+        mail = TeamMailBrowser(session)
+        assert mail.count_sent_by_operation_id(op) == 1
+    journal.close()

@@ -1,18 +1,20 @@
-"""Deterministic recruiting browser workflow with Phase-4 human control.
+"""Deterministic recruiting browser workflow with human control + durable journal.
 
-AI never executes side effects here. Authority gates and pause checkpoints
-sit between validated intent and browser mutations.
+AI never executes side effects here. Authority gates, pause checkpoints, and
+write-ahead journal recording sit between validated intent and browser mutations.
 
-No durable journal. No ambiguous-outcome recovery. No final operator UI.
+Ambiguous send outcomes are reconciled against TeamMail Sent state (Phase 5).
+No final evidence package (Phase 6). No final operator UI (Phase 7).
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Any, Optional, Protocol
 
 from taskwitness.browser.session import BrowserSession
 from taskwitness.browser.talentdesk import TalentDeskBrowser, VisibleCandidate
@@ -31,6 +33,15 @@ from taskwitness.control.approval import (
 )
 from taskwitness.control.progress import ProgressEvent, ProgressSink
 from taskwitness.control.run_control import RunControl
+from taskwitness.journal.keys import (
+    make_action_key,
+    prepare_followup_payload,
+    send_message_payload,
+    set_stage_payload,
+)
+from taskwitness.journal.recovery import BrowserSentInspector, resolve_unknown_send
+from taskwitness.journal.store import Journal
+from taskwitness.journal.types import ActionState
 from taskwitness.schemas import ActionType, Authority, RunState, TaskSpec
 
 
@@ -72,6 +83,10 @@ class TeamMailOps(Protocol):
         expected_recipient: str | None = None,
     ) -> SendResult: ...
 
+    def find_sent_by_operation_id(self, operation_id: str) -> str | None: ...
+
+    def count_sent_by_operation_id(self, operation_id: str) -> int: ...
+
 
 @dataclass
 class WorkflowConfig:
@@ -93,6 +108,8 @@ class WorkflowConfig:
     base_url: str = "http://127.0.0.1:8000"
     headed: bool = True
     slow_mo_ms: int = 0
+    task_spec_json: Optional[str] = None
+    goal_summary: Optional[str] = None
 
 
 @dataclass
@@ -105,6 +122,9 @@ class ActionOutcome:
     approval: Optional[str] = None  # approved | rejected | None
     incomplete: bool = False
     unknown: bool = False
+    recovered: bool = False
+    action_key: Optional[str] = None
+    attempt_count: Optional[int] = None
 
 
 @dataclass
@@ -123,11 +143,13 @@ class CandidateRunResult:
             return False
         if self.precondition_ok is False:
             return False
-        if self.stage_update is not None and not self.stage_update.ok and not self.stage_update.incomplete:
-            return False
-        if self.draft is not None and not self.draft.ok:
-            return False
-        if self.send is not None and not self.send.ok and not self.send.incomplete:
+        for outcome in (self.stage_update, self.draft, self.send):
+            if outcome is None:
+                continue
+            if outcome.recovered or outcome.ok:
+                continue
+            if outcome.incomplete:
+                continue
             return False
         return True
 
@@ -147,7 +169,7 @@ class BrowserRunResult:
     candidate_results: list[CandidateRunResult]
     run_state: RunState = RunState.completed
     error: Optional[str] = None
-    # Retained empty for older callers; Phase 4 uses incomplete action outcomes.
+    run_id: Optional[str] = None
     deferred_actions: list[str] = field(default_factory=list)
 
     @property
@@ -231,8 +253,7 @@ def config_from_taskspec(
     """Map TaskSpec → WorkflowConfig.
 
     Authority flags are copied, never rewritten. False authority does not
-    strip the requested action — Phase 4 obtains approval at the side effect.
-    Returns an empty deferred list (legacy tuple shape for callers).
+    strip the requested action — approval is obtained at the side effect.
     """
     cfg = WorkflowConfig(
         source_file=spec.source_file,
@@ -246,6 +267,8 @@ def config_from_taskspec(
         authority_send_message=spec.authority.send_message,
         base_url=base_url,
         headed=headed,
+        task_spec_json=spec.model_dump_json(),
+        goal_summary=f"{spec.candidate_status} {spec.role}",
     )
     return cfg, []
 
@@ -256,6 +279,29 @@ def authority_snapshot(spec: TaskSpec) -> Authority:
         send_message=spec.authority.send_message,
         change_stage=spec.authority.change_stage,
     )
+
+
+def _task_spec_snapshot(config: WorkflowConfig) -> dict[str, Any]:
+    if config.task_spec_json:
+        return json.loads(config.task_spec_json)
+    actions: list[str] = []
+    if config.prepare_followups:
+        actions.append(ActionType.prepare_followup.value)
+    if config.set_stage_requested:
+        actions.append(ActionType.set_stage.value)
+    if config.send_message_requested:
+        actions.append(ActionType.send_message.value)
+    return {
+        "source_file": config.source_file,
+        "role": config.role,
+        "candidate_status": config.candidate_status,
+        "actions": actions or [ActionType.prepare_followup.value],
+        "target_stage": config.target_stage,
+        "authority": {
+            "send_message": config.authority_send_message,
+            "change_stage": config.authority_change_stage,
+        },
+    }
 
 
 class RecruitingWorkflow:
@@ -269,6 +315,9 @@ class RecruitingWorkflow:
         desk: TalentDeskOps | None = None,
         mail: TeamMailOps | None = None,
         skip_app_wait: bool = False,
+        journal: Journal | None = None,
+        journal_path: Path | str | None = None,
+        close_journal: bool | None = None,
     ) -> None:
         self.config = config
         self.control = run_control or RunControl()
@@ -277,6 +326,10 @@ class RecruitingWorkflow:
         self._injected_desk = desk
         self._injected_mail = mail
         self._skip_app_wait = skip_app_wait or (desk is not None and mail is not None)
+        self._owns_journal = journal is None
+        self.journal = journal or Journal(journal_path)
+        self._close_journal = self._owns_journal if close_journal is None else close_journal
+        self._run_id: str | None = None
 
     def emit(
         self,
@@ -329,29 +382,49 @@ class RecruitingWorkflow:
         self.control.set_state(RunState.running)
         self.emit("Workflow started.", run_state=RunState.running)
 
+        run_record = self.journal.create_run(
+            task_spec=_task_spec_snapshot(self.config),
+            goal_summary=self.config.goal_summary,
+            state=RunState.running.value,
+        )
+        self._run_id = run_record.run_id
+
+        try:
+            return self._run_body()
+        finally:
+            if self._close_journal:
+                self.journal.close()
+
+    def _run_body(self) -> BrowserRunResult:
+        assert self._run_id is not None
+
         if not self._skip_app_wait:
             try:
                 wait_for_app(self.config.base_url)
             except RuntimeError as exc:
                 self.control.mark_terminal(RunState.failed)
+                self.journal.finish_run(self._run_id, state=RunState.failed.value)
                 self.emit(str(exc), run_state=RunState.failed, event_type="error")
                 return BrowserRunResult(
                     selected_candidate_ids=[],
                     candidate_results=[],
                     run_state=RunState.failed,
                     error=str(exc),
+                    run_id=self._run_id,
                 )
 
         source_path = Path(self.config.source_file)
         if not source_path.is_file():
             err = f"source file not found: {source_path}"
             self.control.mark_terminal(RunState.failed)
+            self.journal.finish_run(self._run_id, state=RunState.failed.value)
             self.emit(err, run_state=RunState.failed, event_type="error")
             return BrowserRunResult(
                 selected_candidate_ids=[],
                 candidate_results=[],
                 run_state=RunState.failed,
                 error=err,
+                run_id=self._run_id,
             )
 
         selected = filter_candidates(
@@ -389,19 +462,22 @@ class RecruitingWorkflow:
                     for candidate in selected:
                         self._checkpoint()
                         results.append(self._process_candidate(desk, mail, candidate))
-        except Exception as exc:  # noqa: BLE001 — surface clean workflow failure
+        except Exception as exc:  # noqa: BLE001
             err = f"browser workflow failed: {exc}"
             self.control.mark_terminal(RunState.failed)
+            self.journal.finish_run(self._run_id, state=RunState.failed.value)
             self.emit(err, run_state=RunState.failed, event_type="error")
             return BrowserRunResult(
                 selected_candidate_ids=selected_ids,
                 candidate_results=results,
                 run_state=RunState.failed,
                 error=err,
+                run_id=self._run_id,
             )
 
         run_state = self._finalize_state(results)
         self.control.mark_terminal(run_state)
+        self.journal.finish_run(self._run_id, state=run_state.value)
         self.emit(
             f"Workflow finished ({run_state.value}).",
             run_state=run_state,
@@ -411,12 +487,20 @@ class RecruitingWorkflow:
             selected_candidate_ids=selected_ids,
             candidate_results=results,
             run_state=run_state,
+            run_id=self._run_id,
         )
 
     def _finalize_state(self, results: list[CandidateRunResult]) -> RunState:
-        # Ambiguous/unknown side effects are execution failures for Phase 4
-        # (recovery is Phase 5). Do not treat them as clean PARTIAL.
-        if any(r.send is not None and r.send.unknown for r in results):
+        # Unresolved unknown (not recovered) should not count as clean success.
+        unresolved_unknown = any(
+            r.send is not None and r.send.unknown and not r.send.recovered
+            for r in results
+        )
+        if unresolved_unknown:
+            if any(r.has_incomplete or (r.send and r.send.recovered) or (r.send and r.send.ok)
+                   or (r.stage_update and r.stage_update.ok) or (r.draft and r.draft.ok)
+                   for r in results):
+                return RunState.partial
             return RunState.failed
         hard_errors = [
             r
@@ -445,7 +529,7 @@ class RecruitingWorkflow:
             desk.filter_candidates(search=candidate.candidate_id, role=candidate.role)
             desk.open_candidate(candidate.candidate_id)
             self.emit(
-                f"Opened candidate in TalentDesk.",
+                "Opened candidate in TalentDesk.",
                 candidate_id=candidate.candidate_id,
             )
             visible = desk.read_candidate()
@@ -481,9 +565,6 @@ class RecruitingWorkflow:
                 result.send = self._maybe_send(mail, candidate, result.draft)
                 if result.send is not None and result.send.incomplete:
                     result.incomplete.append("send_message")
-                if result.send is not None and result.send.unknown:
-                    # Ambiguous send: surface failure, do not retry (Phase 5 owns recovery).
-                    result.error = result.send.detail
         except Exception as exc:  # noqa: BLE001
             result.error = str(exc)
             self.emit(
@@ -499,49 +580,75 @@ class RecruitingWorkflow:
         candidate: SourceCandidate,
         target_stage: str,
     ) -> ActionOutcome:
+        assert self._run_id is not None
         self._checkpoint()
-        if self.config.authority_change_stage:
-            stage = desk.set_stage(target_stage)
-            self.emit(
-                f"Stage changed to {stage}.",
-                candidate_id=candidate.candidate_id,
-                action=ActionType.set_stage.value,
-            )
-            return ActionOutcome(
-                name="set_stage",
-                ok=True,
-                detail=f"stage={stage}",
-            )
-
-        request = ApprovalRequest(
-            approval_id=new_approval_id(),
-            action=ActionType.set_stage,
+        payload = set_stage_payload(target_stage=target_stage)
+        action_key = make_action_key(
+            run_id=self._run_id,
+            action_type=ActionType.set_stage.value,
             candidate_id=candidate.candidate_id,
-            target=target_stage,
-            reason=(
-                "The goal requested this action but did not grant autonomous "
-                "stage-change authority."
-            ),
+            payload=payload,
         )
-        decision = self._request_approval(request)
-        self._checkpoint()
-        if decision is ApprovalDecision.REJECTED:
-            self.emit(
-                "Stage change left incomplete because approval was rejected.",
-                run_state=RunState.partial,
+        self.journal.plan_action(
+            action_key=action_key,
+            run_id=self._run_id,
+            candidate_id=candidate.candidate_id,
+            action_type=ActionType.set_stage.value,
+            payload=payload,
+        )
+
+        approval_value = None
+        if not self.config.authority_change_stage:
+            request = ApprovalRequest(
+                approval_id=new_approval_id(),
+                action=ActionType.set_stage,
                 candidate_id=candidate.candidate_id,
-                action=ActionType.set_stage.value,
-                event_type="rejected",
+                target=target_stage,
+                reason=(
+                    "The goal requested this action but did not grant autonomous "
+                    "stage-change authority."
+                ),
             )
+            decision = self._request_approval(request)
+            self._checkpoint()
+            if decision is ApprovalDecision.REJECTED:
+                rec = self.journal.mark_rejected(
+                    action_key, note="human rejected stage change"
+                )
+                self.emit(
+                    "Stage change left incomplete because approval was rejected.",
+                    run_state=RunState.partial,
+                    candidate_id=candidate.candidate_id,
+                    action=ActionType.set_stage.value,
+                    event_type="rejected",
+                )
+                return ActionOutcome(
+                    name="set_stage",
+                    ok=False,
+                    detail="rejected: stage unchanged",
+                    approval=ApprovalDecision.REJECTED.value,
+                    incomplete=True,
+                    action_key=action_key,
+                    attempt_count=rec.attempt_count,
+                )
+            approval_value = ApprovalDecision.APPROVED.value
+
+        self._checkpoint()
+        self.journal.mark_in_progress(action_key)
+        try:
+            stage = desk.set_stage(target_stage)
+        except Exception as exc:  # noqa: BLE001
+            rec = self.journal.mark_failed(action_key, error=str(exc))
             return ActionOutcome(
                 name="set_stage",
                 ok=False,
-                detail="rejected: stage unchanged",
-                approval=ApprovalDecision.REJECTED.value,
-                incomplete=True,
+                detail=str(exc),
+                approval=approval_value,
+                action_key=action_key,
+                attempt_count=rec.attempt_count,
             )
 
-        stage = desk.set_stage(target_stage)
+        rec = self.journal.mark_succeeded(action_key, note=f"stage={stage}")
         self.emit(
             f"Stage changed to {stage}.",
             candidate_id=candidate.candidate_id,
@@ -551,20 +658,45 @@ class RecruitingWorkflow:
             name="set_stage",
             ok=True,
             detail=f"stage={stage}",
-            approval=ApprovalDecision.APPROVED.value,
+            approval=approval_value,
+            action_key=action_key,
+            attempt_count=rec.attempt_count,
         )
 
     def _prepare_followup(
         self, mail: TeamMailOps, candidate: SourceCandidate
     ) -> ActionOutcome:
+        assert self._run_id is not None
         operation_id = make_operation_id(
             candidate_id=candidate.candidate_id,
             role=candidate.role,
         )
+        payload = prepare_followup_payload(
+            operation_id=operation_id,
+            recipient=candidate.email,
+            role=candidate.role,
+        )
+        action_key = make_action_key(
+            run_id=self._run_id,
+            action_type=ActionType.prepare_followup.value,
+            candidate_id=candidate.candidate_id,
+            payload=payload,
+        )
+        self.journal.plan_action(
+            action_key=action_key,
+            run_id=self._run_id,
+            candidate_id=candidate.candidate_id,
+            action_type=ActionType.prepare_followup.value,
+            payload=payload,
+            operation_id=operation_id,
+        )
+
         existing = mail.find_draft_by_operation_id(operation_id)
         if existing:
+            self.journal.mark_in_progress(action_key)
             mail.open_draft(existing)
             draft = mail.read_draft()
+            rec = self.journal.mark_succeeded(action_key, note="existing draft reused")
             self.emit(
                 f"Draft {draft.message_id or existing} reused.",
                 candidate_id=candidate.candidate_id,
@@ -576,9 +708,12 @@ class RecruitingWorkflow:
                 detail="existing draft reused",
                 message_id=draft.message_id or existing,
                 operation_id=operation_id,
+                action_key=action_key,
+                attempt_count=rec.attempt_count,
             )
 
         self._checkpoint()
+        self.journal.mark_in_progress(action_key)
         mail.open_compose()
         mail.fill_compose(
             recipient=candidate.email,
@@ -590,13 +725,19 @@ class RecruitingWorkflow:
         mail.open_draft(message_id)
         draft = mail.read_draft()
         if draft.recipient != candidate.email or draft.operation_id != operation_id:
+            rec = self.journal.mark_failed(
+                action_key, error="draft fields did not persist as expected"
+            )
             return ActionOutcome(
                 name="prepare_followup",
                 ok=False,
                 detail="draft fields did not persist as expected",
                 message_id=message_id,
                 operation_id=operation_id,
+                action_key=action_key,
+                attempt_count=rec.attempt_count,
             )
+        rec = self.journal.mark_succeeded(action_key, note="draft created")
         self.emit(
             f"Draft {message_id} prepared.",
             candidate_id=candidate.candidate_id,
@@ -608,6 +749,8 @@ class RecruitingWorkflow:
             detail="draft created",
             message_id=message_id,
             operation_id=operation_id,
+            action_key=action_key,
+            attempt_count=rec.attempt_count,
         )
 
     def _maybe_send(
@@ -616,6 +759,7 @@ class RecruitingWorkflow:
         candidate: SourceCandidate,
         draft_outcome: ActionOutcome | None,
     ) -> ActionOutcome:
+        assert self._run_id is not None
         operation_id = make_operation_id(
             candidate_id=candidate.candidate_id,
             role=candidate.role,
@@ -625,8 +769,23 @@ class RecruitingWorkflow:
             message_id = draft_outcome.message_id
             operation_id = draft_outcome.operation_id or operation_id
         else:
-            # May send an already-existing matching draft; never invent content.
             message_id = mail.find_draft_by_operation_id(operation_id)
+
+        payload = send_message_payload(operation_id=operation_id)
+        action_key = make_action_key(
+            run_id=self._run_id,
+            action_type=ActionType.send_message.value,
+            candidate_id=candidate.candidate_id,
+            payload=payload,
+        )
+        self.journal.plan_action(
+            action_key=action_key,
+            run_id=self._run_id,
+            candidate_id=candidate.candidate_id,
+            action_type=ActionType.send_message.value,
+            payload=payload,
+            operation_id=operation_id,
+        )
 
         if not message_id:
             detail = (
@@ -634,6 +793,7 @@ class RecruitingWorkflow:
                 "follow-up (prepare_followup was not performed and no matching "
                 "draft exists)"
             )
+            rec = self.journal.mark_blocked(action_key, note=detail)
             self.emit(
                 detail,
                 candidate_id=candidate.candidate_id,
@@ -646,9 +806,12 @@ class RecruitingWorkflow:
                 detail=detail,
                 operation_id=operation_id,
                 incomplete=True,
+                action_key=action_key,
+                attempt_count=rec.attempt_count,
             )
 
         self._checkpoint()
+        approval_value = None
         if not self.config.authority_send_message:
             request = ApprovalRequest(
                 approval_id=new_approval_id(),
@@ -664,6 +827,9 @@ class RecruitingWorkflow:
             decision = self._request_approval(request)
             self._checkpoint()
             if decision is ApprovalDecision.REJECTED:
+                rec = self.journal.mark_rejected(
+                    action_key, note="human rejected send"
+                )
                 self.emit(
                     "Follow-up left as draft because approval was rejected.",
                     run_state=RunState.partial,
@@ -679,18 +845,63 @@ class RecruitingWorkflow:
                     operation_id=operation_id,
                     approval=ApprovalDecision.REJECTED.value,
                     incomplete=True,
+                    action_key=action_key,
+                    attempt_count=rec.attempt_count,
                 )
             approval_value = ApprovalDecision.APPROVED.value
-        else:
-            approval_value = None
 
+        return self._execute_send(
+            mail,
+            candidate=candidate,
+            message_id=message_id,
+            operation_id=operation_id,
+            action_key=action_key,
+            approval_value=approval_value,
+        )
+
+    def _execute_send(
+        self,
+        mail: TeamMailOps,
+        *,
+        candidate: SourceCandidate,
+        message_id: str,
+        operation_id: str,
+        action_key: str,
+        approval_value: str | None,
+    ) -> ActionOutcome:
         self._checkpoint()
+        self.emit(
+            "Sending follow-up...",
+            candidate_id=candidate.candidate_id,
+            action=ActionType.send_message.value,
+        )
+        rec = self.journal.mark_in_progress(action_key)
         send_result = mail.send_draft(
             message_id,
             expected_operation_id=operation_id,
             expected_recipient=candidate.email,
         )
-        if send_result.unknown or not send_result.ok:
+
+        if send_result.unknown:
+            self.journal.mark_unknown(action_key, error=send_result.detail)
+            self.emit(
+                "Send acknowledgement lost; checking TeamMail Sent state.",
+                run_state=RunState.recovering,
+                candidate_id=candidate.candidate_id,
+                action=ActionType.send_message.value,
+                event_type="recovering",
+            )
+            return self._recover_send(
+                mail,
+                candidate=candidate,
+                message_id=message_id,
+                operation_id=operation_id,
+                action_key=action_key,
+                approval_value=approval_value,
+            )
+
+        if not send_result.ok:
+            rec = self.journal.mark_failed(action_key, error=send_result.detail)
             self.emit(
                 send_result.detail,
                 candidate_id=candidate.candidate_id,
@@ -704,9 +915,11 @@ class RecruitingWorkflow:
                 message_id=send_result.message_id,
                 operation_id=send_result.operation_id or operation_id,
                 approval=approval_value,
-                unknown=send_result.unknown,
+                action_key=action_key,
+                attempt_count=rec.attempt_count,
             )
 
+        rec = self.journal.mark_succeeded(action_key, note=send_result.detail)
         self.emit(
             "Follow-up sent.",
             candidate_id=candidate.candidate_id,
@@ -719,6 +932,90 @@ class RecruitingWorkflow:
             message_id=send_result.message_id,
             operation_id=send_result.operation_id or operation_id,
             approval=approval_value,
+            action_key=action_key,
+            attempt_count=rec.attempt_count,
+        )
+
+    def _recover_send(
+        self,
+        mail: TeamMailOps,
+        *,
+        candidate: SourceCandidate,
+        message_id: str,
+        operation_id: str,
+        action_key: str,
+        approval_value: str | None,
+    ) -> ActionOutcome:
+        self.control.set_state(RunState.recovering)
+        inspector = BrowserSentInspector(mail)
+        decision = resolve_unknown_send(self.journal, action_key, inspector)
+
+        if decision.decision == "recovered":
+            self.emit(
+                f"Found existing message with operation ID {operation_id}.",
+                run_state=RunState.recovering,
+                candidate_id=candidate.candidate_id,
+                action=ActionType.send_message.value,
+                event_type="recovering",
+            )
+            self.emit(
+                "Send recovered without retry.",
+                run_state=RunState.running,
+                candidate_id=candidate.candidate_id,
+                action=ActionType.send_message.value,
+            )
+            self.control.set_state(RunState.running)
+            return ActionOutcome(
+                name="send_message",
+                ok=True,
+                detail=decision.note,
+                message_id=decision.message_id or message_id,
+                operation_id=operation_id,
+                approval=approval_value,
+                recovered=True,
+                action_key=action_key,
+                attempt_count=decision.action.attempt_count,
+            )
+
+        if decision.should_retry:
+            self.emit(
+                decision.note,
+                run_state=RunState.recovering,
+                candidate_id=candidate.candidate_id,
+                action=ActionType.send_message.value,
+                event_type="recovering",
+            )
+            # Controlled same-operation retry: journal IN_PROGRESS again, reuse operation_id.
+            draft_id = mail.find_draft_by_operation_id(operation_id) or message_id
+            self.control.set_state(RunState.running)
+            return self._execute_send(
+                mail,
+                candidate=candidate,
+                message_id=draft_id,
+                operation_id=operation_id,
+                action_key=action_key,
+                approval_value=approval_value,
+            )
+
+        self.emit(
+            decision.note,
+            run_state=RunState.partial,
+            candidate_id=candidate.candidate_id,
+            action=ActionType.send_message.value,
+            event_type="blocked",
+        )
+        self.control.set_state(RunState.running)
+        return ActionOutcome(
+            name="send_message",
+            ok=False,
+            detail=decision.note,
+            message_id=message_id,
+            operation_id=operation_id,
+            approval=approval_value,
+            incomplete=True,
+            unknown=True,
+            action_key=action_key,
+            attempt_count=decision.action.attempt_count,
         )
 
 

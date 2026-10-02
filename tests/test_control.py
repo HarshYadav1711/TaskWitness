@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 import threading
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from taskwitness.control import (
     ScriptedApprovalProvider,
 )
 from taskwitness.control.progress import ProgressEvent
+from taskwitness.journal import Journal
 from taskwitness.schemas import ActionType, Authority, RunState, TaskSpec
 from taskwitness.testing.fakes import FakeTalentDesk, FakeTeamMail
 from taskwitness.workflow import (
@@ -70,14 +72,21 @@ def _base_config(**overrides) -> WorkflowConfig:
     return WorkflowConfig(**data)
 
 
-def _run(config: WorkflowConfig, *, desk=None, mail=None, **kwargs):
+def _run(config: WorkflowConfig, *, desk=None, mail=None, journal=None, **kwargs):
     desk = desk or _seed_ai_desk()
     mail = mail or FakeTeamMail()
+    owns = journal is None
+    if journal is None:
+        tmp = tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False)
+        tmp.close()
+        journal = Journal(tmp.name)
     result = RecruitingWorkflow(
         config,
         desk=desk,
         mail=mail,
         skip_app_wait=True,
+        journal=journal,
+        close_journal=owns,
         **kwargs,
     ).run()
     return result, desk, mail
@@ -261,6 +270,9 @@ def test_pause_prevents_next_side_effect_and_resume_allows_it():
     started = threading.Event()
     finished = threading.Event()
     box: dict = {}
+    tmp = tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False)
+    tmp.close()
+    journal = Journal(tmp.name)
 
     def worker() -> None:
         started.set()
@@ -271,6 +283,8 @@ def test_pause_prevents_next_side_effect_and_resume_allows_it():
             desk=desk,
             mail=mail,
             skip_app_wait=True,
+            journal=journal,
+            close_journal=True,
         ).run()
         finished.set()
 
@@ -314,6 +328,9 @@ def test_progress_reports_paused_running_transitions():
     )
     control.request_pause()
     done = threading.Event()
+    tmp = tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False)
+    tmp.close()
+    journal = Journal(tmp.name)
 
     def worker() -> None:
         RecruitingWorkflow(
@@ -324,6 +341,8 @@ def test_progress_reports_paused_running_transitions():
             desk=desk,
             mail=mail,
             skip_app_wait=True,
+            journal=journal,
+            close_journal=True,
         ).run()
         done.set()
 
@@ -412,6 +431,9 @@ def test_send_cannot_occur_before_approval_when_authority_false():
     mail = FakeTeamMail()
     provider = GatedProvider()
     done = threading.Event()
+    tmp = tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False)
+    tmp.close()
+    journal = Journal(tmp.name)
 
     def worker() -> None:
         RecruitingWorkflow(
@@ -420,6 +442,8 @@ def test_send_cannot_occur_before_approval_when_authority_false():
             desk=_seed_ai_desk(),
             mail=mail,
             skip_app_wait=True,
+            journal=journal,
+            close_journal=True,
         ).run()
         done.set()
 
@@ -451,7 +475,7 @@ def test_send_without_known_draft_is_blocked():
     )
 
 
-def test_ambiguous_send_is_not_retried():
+def test_ambiguous_send_is_recovered_without_retry():
     mail = FakeTeamMail()
     mail.fail_send_unknown_once = True
     result, _, mail = _run(
@@ -465,11 +489,12 @@ def test_ambiguous_send_is_not_retried():
     )
     first = result.candidate_results[0]
     assert first.send is not None
-    assert first.send.unknown is True
-    assert first.send.ok is False
-    # Ambiguous message id appears exactly once in send_calls (no blind retry).
+    assert first.send.recovered is True
+    assert first.send.ok is True
+    assert first.send.unknown is False
     ambiguous_id = mail.send_calls[0]
     assert mail.send_calls.count(ambiguous_id) == 1
+    assert result.run_state == RunState.completed
 
 
 def test_config_from_taskspec_preserves_false_authority_actions():

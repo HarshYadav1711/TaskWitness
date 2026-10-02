@@ -14,6 +14,7 @@ Thumbs.db
 .vscode/
 *.sqlite3
 demo_env/demo_env.sqlite3
+.taskwitness/
 test-results/
 playwright-report/
 blob-report/
