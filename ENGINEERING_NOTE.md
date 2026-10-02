@@ -18,7 +18,16 @@ The UI separates **execution** outcome from **verification** outcome. “Goal ve
 
 ## Reliability and recovery
 
-Failed browser acknowledgement is not treated as proof the business side effect failed. Ambiguous sends become `UNKNOWN`, then TaskWitness inspects visible TeamMail Sent state by stable `operation_id` before any retry. Exactly one match recovers without resending. Multiple matches or unavailable inspection block rather than guess.
+Failed browser acknowledgement is not treated as proof the business side effect failed. Ambiguous sends become `UNKNOWN`, then TaskWitness inspects visible TeamMail Sent state by stable `operation_id` before any retry. Exactly one match recovers without resending. Multiple matches, unavailable inspection, or a missing `operation_id` on the durable UNKNOWN record block rather than guess or blind-resend.
+
+## Hardening judgments (Phase 9)
+
+Two concrete defects were fixed under test:
+
+1. **Approval resolve race** — `WebApprovalProvider` recorded the resolved id only after the waiter woke. Concurrent dual `resolve()` could both succeed. The id is now claimed inside `resolve()` under the lock.
+2. **Source-path bypass on non-NL entry** — schema-valid TaskSpecs with hostile `source_file` could reach `load_candidates` via `config_from_taskspec` / workflow without interpretation policy. Execution now requires `resolve_execution_source` (approved CSV only).
+
+See `docs/ADVERSARIAL_REVIEW.md`.
 
 ## Human control and authority
 
@@ -38,8 +47,8 @@ _To be completed for submission._
 
 ## Limitations
 
-Validated Plan Demo Mode proves operator control/runtime without live model credentials; it does not claim live natural-language interpretation quality. One active run at a time. Operator UI state does not survive operator-server restart. Phase 8 assessment harness runs assignment scenarios through the operator UI with isolated processes; live-provider pre-submission checks remain separate and unresolved until credentials are actually used.
+Validated Plan Demo Mode proves operator control/runtime without live model credentials; it does not claim live natural-language interpretation quality. One active run at a time. Operator UI state does not survive operator-server restart. Phase 8 assessment harness runs assignment scenarios through the operator UI with isolated processes; live-provider pre-submission checks remain separate and unresolved until credentials are actually used. Phase 9 adversarial coverage is automated and does not require a live model.
 
 ## What I would build next
 
-Phase 9 — hardening and adversarial review, per `docs/PHASES.md`.
+Phase 10 — documentation, demo, and submission packaging, per `docs/PHASES.md`.

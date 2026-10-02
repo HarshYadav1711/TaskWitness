@@ -202,6 +202,8 @@ Implement only the phase explicitly requested. Do not advance automatically.
 
 ## Phase 9 — Hardening and adversarial review
 
+**Status:** Complete
+
 **Objective:** Harden against unsafe and ambiguous execution paths.
 
 **Planned work:** Adversarial cases (malformed plans, authority edge cases, duplicate-risk paths); fix genuine gaps.

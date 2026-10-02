@@ -70,6 +70,51 @@ def _source_is_unsafe(value: str) -> bool:
     return False
 
 
+def resolve_execution_source(source_file: str, *, root: Path | None = None) -> Path:
+    """Resolve source_file only when it is the approved candidates.csv.
+
+    Rejects URLs/schemes and path-traversal segments. Absolute paths are
+    allowed only when they resolve to the same file as APPROVED_SOURCE.
+    """
+    raw = (source_file or "").strip()
+    if not raw:
+        raise PolicyRejection("source_file must not be blank")
+
+    lowered = raw.lower()
+    if "://" in raw or lowered.startswith("file:"):
+        raise PolicyRejection(
+            f"unsafe source_file {source_file!r}; only {APPROVED_SOURCE} is allowed"
+        )
+
+    # Fail closed on traversal tokens before Path.resolve() can normalize them away.
+    parts = raw.replace("\\", "/").split("/")
+    if ".." in parts:
+        raise PolicyRejection(
+            f"unsafe source_file {source_file!r}; only {APPROVED_SOURCE} is allowed"
+        )
+
+    base = (root or _REPO_ROOT).resolve()
+    approved = approved_source_path().resolve()
+    candidate = Path(raw)
+    if not candidate.is_absolute():
+        candidate = base / normalize_source_file(raw)
+
+    try:
+        resolved = candidate.resolve()
+    except OSError as exc:
+        raise PolicyRejection(
+            f"unsafe source_file {source_file!r}; only {APPROVED_SOURCE} is allowed"
+        ) from exc
+
+    if resolved != approved:
+        raise PolicyRejection(
+            f"unsupported source_file {source_file!r}; only {APPROVED_SOURCE} is allowed"
+        )
+    if not resolved.is_file():
+        raise PolicyRejection(f"approved source missing: {approved}")
+    return resolved
+
+
 def validate_taskspec_policy(spec: TaskSpec) -> TaskSpec:
     """Return a policy-approved TaskSpec or raise PolicyRejection."""
     if _source_is_unsafe(spec.source_file):
@@ -82,6 +127,9 @@ def validate_taskspec_policy(spec: TaskSpec) -> TaskSpec:
         raise PolicyRejection(
             f"unsupported source_file {spec.source_file!r}; only {APPROVED_SOURCE} is allowed"
         )
+
+    # Confirm the approved relative path actually resolves to the controlled file.
+    resolve_execution_source(source)
 
     roles = supported_roles()
     if spec.role not in roles:

@@ -12,7 +12,7 @@ AI interprets intent. Deterministic software performs side effects. Independent 
 
 ## Current status
 
-**Phase 8 complete — assignment scenarios and acceptance harness.** Reproducible assessment scenarios (`base`, `variation`, `recovery`, `rejection`, `pause`) run through the operator UI in Validated Plan Demo Mode. Live LLM interpretation checks remain pending until credentials are used for a real pre-submission pass.
+**Phase 9 complete — adversarial hardening.** Assignment scenarios still run via Validated Plan Demo Mode (`python -m taskwitness.assessment_accept`). Phase 9 added fail-closed regressions (`tests/test_hardening.py`, `docs/ADVERSARIAL_REVIEW.md`). Live LLM interpretation checks remain pending until credentials are used for a real pre-submission pass.
 
 ## Requirements
 
@@ -239,4 +239,3 @@ All candidates and emails are fictional. Addresses use `example.test`. No real p
 
 - Live-provider pre-submission interpretation check (manual; credentials required)
 - Final demo video / submission polish (Phase 10)
-- Adversarial hardening sweep (Phase 9)

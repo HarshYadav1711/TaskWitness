@@ -2,7 +2,7 @@
 
 ## Preconditions
 
-- Phase 8 complete: product through operator UI + assessment acceptance harness.
+- Phase 9 complete: adversarial hardening + prior product through operator UI + assessment acceptance harness.
 - Synthetic data only (`data/candidates.csv`, `example.test`).
 - Install Chromium once: `python -m playwright install chromium`
 - For live interpretation, set `LLM_API_KEY` and `LLM_MODEL` (optional `LLM_BASE_URL`).

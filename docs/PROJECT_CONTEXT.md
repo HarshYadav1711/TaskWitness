@@ -86,9 +86,9 @@ Optimize for a strong, understandable, reliable prototype—not maximum feature 
 
 ## Current implementation status
 
-**Phase 8 complete — assignment scenarios and acceptance harness.**
+**Phase 9 complete — adversarial hardening and failure-boundary review.**
 
-Deterministic assessment scenarios (`base`, `variation`, `recovery`, plus `rejection` / `pause`) run through the operator UI in Validated Plan Demo Mode via `python -m taskwitness.assessment_accept`. Live natural-language provider checks remain a pre-submission manual requirement and are not claimed complete by Phase 8 automation. Hardening/adversarial review is Phase 9.
+Phases 0–8 behavior is locked. Phase 9 added fail-closed regressions (see `docs/ADVERSARIAL_REVIEW.md` and `tests/test_hardening.py`), including a concurrent approval-resolve race fix and execution-time approved-source enforcement. Live natural-language provider checks remain a pre-submission manual requirement (Phase 10).
 
 ## Explicitly out of scope
 

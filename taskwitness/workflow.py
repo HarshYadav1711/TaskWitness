@@ -254,9 +254,13 @@ def config_from_taskspec(
 
     Authority flags are copied, never rewritten. False authority does not
     strip the requested action — approval is obtained at the side effect.
+    source_file must resolve to the approved candidates.csv before execution.
     """
+    from taskwitness.interpretation.policy import resolve_execution_source
+
+    source_path = resolve_execution_source(spec.source_file)
     cfg = WorkflowConfig(
-        source_file=spec.source_file,
+        source_file=str(source_path),
         role=spec.role,
         candidate_status=spec.candidate_status,
         prepare_followups=ActionType.prepare_followup in spec.actions,
@@ -414,6 +418,25 @@ class RecruitingWorkflow:
                 )
 
         source_path = Path(self.config.source_file)
+        try:
+            from taskwitness.interpretation.policy import (
+                PolicyRejection,
+                resolve_execution_source,
+            )
+
+            source_path = resolve_execution_source(str(source_path))
+        except PolicyRejection as exc:
+            err = str(exc.message)
+            self.control.mark_terminal(RunState.failed)
+            self.journal.finish_run(self._run_id, state=RunState.failed.value)
+            self.emit(err, run_state=RunState.failed, event_type="error")
+            return BrowserRunResult(
+                selected_candidate_ids=[],
+                candidate_results=[],
+                run_state=RunState.failed,
+                error=err,
+                run_id=self._run_id,
+            )
         if not source_path.is_file():
             err = f"source file not found: {source_path}"
             self.control.mark_terminal(RunState.failed)

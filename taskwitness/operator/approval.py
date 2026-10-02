@@ -64,5 +64,12 @@ class WebApprovalProvider:
                 raise ApprovalError("invalid decision")
             pending = self._pending
             self._decision = decision
+            # Claim immediately so concurrent resolve() cannot also succeed
+            # before request_approval() wakes and records the id.
+            self._resolved_ids.add(approval_id)
+            self._pending = None
+            callback = self.on_pending_changed
             self._condition.notify_all()
-            return pending
+        if callback is not None:
+            callback(None)
+        return pending

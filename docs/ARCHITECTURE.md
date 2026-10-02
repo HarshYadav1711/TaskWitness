@@ -150,6 +150,12 @@ Operating loop: **Understand → Execute → Verify**.
 - Scenario isolation resets synthetic DB + journal per run. Assertions may inspect synthetic DB for outcomes; business mutations still occur only through Playwright.
 - Optional `--live-model` interprets goals when credentials exist; otherwise reports SKIPPED. Automated pytest never requires a live model.
 
+### Adversarial hardening (Phase 9)
+
+- Execution source paths must resolve to the approved `data/candidates.csv` (`resolve_execution_source`) at `config_from_taskspec` and workflow start — not only on the NL interpretation path.
+- `WebApprovalProvider` claims an approval id as resolved inside `resolve()` under the lock so concurrent duplicate resolutions cannot both succeed.
+- Adversarial regressions live in `tests/test_hardening.py`; findings recorded in `docs/ADVERSARIAL_REVIEW.md`.
+
 ## Technology decisions
 
 **Python 3.12** — one primary language for automation and typed AI-adjacent workflows; strong fit for Playwright and assessment ownership.

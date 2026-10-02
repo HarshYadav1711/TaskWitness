@@ -96,6 +96,20 @@ def _wait_until(pred, timeout=8.0):
     raise AssertionError("condition not met in time")
 
 
+def _drain_approvals(rt: OperatorRuntime, run_id: str, decision: str = "approved"):
+    """Resolve each pending approval id at most once (snapshot may lag clear)."""
+    seen: set[str] = set()
+    while True:
+        s = rt.snapshot(run_id)
+        if s["terminal"]:
+            return s
+        pending = s["pending_approval"]
+        if pending and pending["approval_id"] not in seen:
+            seen.add(pending["approval_id"])
+            rt.resolve_approval(run_id, pending["approval_id"], decision)
+        time.sleep(0.05)
+
+
 # --- WebApprovalProvider -------------------------------------------------
 
 
@@ -168,19 +182,7 @@ def test_one_active_run_limit(tmp_path: Path):
     _wait_until(lambda: rt.snapshot(run_id)["pending_approval"] is not None, timeout=10)
     with pytest.raises(OperatorError, match="already active"):
         rt.start_run(mode="validated_plan")
-    # Resolve to finish.
-    apr = rt.snapshot(run_id)["pending_approval"]
-    rt.resolve_approval(run_id, apr["approval_id"], "approved")
-    # Second candidate will also need approval — keep resolving until terminal
-    def drain():
-        while True:
-            s = rt.snapshot(run_id)
-            if s["terminal"]:
-                return
-            if s["pending_approval"]:
-                rt.resolve_approval(run_id, s["pending_approval"]["approval_id"], "approved")
-            time.sleep(0.05)
-    drain()
+    _drain_approvals(rt, run_id, "approved")
     _wait_until(lambda: rt.snapshot(run_id)["terminal"])
 
 
@@ -258,33 +260,14 @@ def test_pause_resume_call_run_control(tmp_path: Path):
     # Still may be awaiting approval — resume clears pause request
     rt.resume(run_id)
     assert rt.get_run(run_id).control.pause_requested is False
-    # Drain approvals so suite does not leak threads
-    def drain():
-        while True:
-            s = rt.snapshot(run_id)
-            if s["terminal"]:
-                return
-            if s["pending_approval"]:
-                rt.resolve_approval(run_id, s["pending_approval"]["approval_id"], "rejected")
-            time.sleep(0.05)
-    drain()
+    _drain_approvals(rt, run_id, "rejected")
 
 
 def test_verified_result_exposed(tmp_path: Path):
     rt = _runtime(tmp_path, demo_spec=_base_spec())
     snap = rt.start_run(mode="validated_plan")
     run_id = snap["run_id"]
-
-    def drain_approve():
-        while True:
-            s = rt.snapshot(run_id)
-            if s["terminal"]:
-                return s
-            if s["pending_approval"]:
-                rt.resolve_approval(run_id, s["pending_approval"]["approval_id"], "approved")
-            time.sleep(0.05)
-
-    final = drain_approve()
+    final = _drain_approvals(rt, run_id, "approved")
     assert final["verification"] is not None
     assert final["verified_complete"] is True
     assert final["final_message"] == "Goal verified"
@@ -296,17 +279,7 @@ def test_incomplete_verification_no_goal_verified_wording(tmp_path: Path):
     rt = _runtime(tmp_path, demo_spec=_base_spec())
     snap = rt.start_run(mode="validated_plan")
     run_id = snap["run_id"]
-
-    def drain_reject():
-        while True:
-            s = rt.snapshot(run_id)
-            if s["terminal"]:
-                return s
-            if s["pending_approval"]:
-                rt.resolve_approval(run_id, s["pending_approval"]["approval_id"], "rejected")
-            time.sleep(0.05)
-
-    final = drain_reject()
+    final = _drain_approvals(rt, run_id, "rejected")
     assert final["verified_complete"] is False
     assert final["final_message"] != "Goal verified"
     assert "Goal verified" not in (final["final_message"] or "")
@@ -317,17 +290,7 @@ def test_terminal_run_allows_next(tmp_path: Path):
     rt = _runtime(tmp_path, demo_spec=_base_spec())
     first = rt.start_run(mode="validated_plan")
     run_id = first["run_id"]
-
-    def drain():
-        while True:
-            s = rt.snapshot(run_id)
-            if s["terminal"]:
-                return
-            if s["pending_approval"]:
-                rt.resolve_approval(run_id, s["pending_approval"]["approval_id"], "rejected")
-            time.sleep(0.05)
-
-    drain()
+    _drain_approvals(rt, run_id, "rejected")
     second = rt.start_run(mode="validated_plan")
     assert second["run_id"] != run_id
 
@@ -394,13 +357,16 @@ def test_api_pause_resume_approval(client):
     assert replay.status_code == 400
 
     # finish remaining approvals
+    seen: set[str] = {apr["approval_id"]}
     while True:
         s = c.get(f"/api/runs/{run_id}").json()
         if s["terminal"]:
             break
-        if s["pending_approval"]:
+        pending = s["pending_approval"]
+        if pending and pending["approval_id"] not in seen:
+            seen.add(pending["approval_id"])
             c.post(
-                f"/api/runs/{run_id}/approvals/{s['pending_approval']['approval_id']}",
+                f"/api/runs/{run_id}/approvals/{pending['approval_id']}",
                 json={"decision": "rejected"},
             )
         time.sleep(0.05)

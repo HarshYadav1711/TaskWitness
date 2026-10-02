@@ -349,15 +349,9 @@ def test_phase5_ambiguous_send_recovers_without_retry(reset_demo, tmp_path):
     finally:
         conn.close()
 
-    # Single candidate for a focused recovery assertion.
-    single_csv = tmp_path / "one.csv"
-    single_csv.write_text(
-        "candidate_id,name,email,role,status,current_stage\n"
-        "CAND-001,Asha Verma,asha.verma@example.test,AI Engineering,Shortlisted,Phone Screen\n",
-        encoding="utf-8",
-    )
+    # Approved source only; one-shot fault hits the first send (CAND-001).
     spec = TaskSpec(
-        source_file=str(single_csv),
+        source_file="data/candidates.csv",
         role="AI Engineering",
         candidate_status="Shortlisted",
         actions=[ActionType.prepare_followup, ActionType.send_message],
@@ -373,7 +367,7 @@ def test_phase5_ambiguous_send_recovers_without_retry(reset_demo, tmp_path):
         close_journal=False,
     ).run()
 
-    assert len(result.candidate_results) == 1
+    assert [r.candidate_id for r in result.candidate_results] == ["CAND-001", "CAND-002"]
     first = result.candidate_results[0]
     assert first.send is not None
     assert first.send.recovered is True
@@ -409,14 +403,8 @@ def test_phase5_clean_send_journal_succeeded(reset_demo, tmp_path):
     from taskwitness.workflow import config_from_taskspec
 
     base_url = reset_demo["base_url"]
-    single_csv = tmp_path / "one.csv"
-    single_csv.write_text(
-        "candidate_id,name,email,role,status,current_stage\n"
-        "CAND-001,Asha Verma,asha.verma@example.test,AI Engineering,Shortlisted,Phone Screen\n",
-        encoding="utf-8",
-    )
     spec = TaskSpec(
-        source_file=str(single_csv),
+        source_file="data/candidates.csv",
         role="AI Engineering",
         candidate_status="Shortlisted",
         actions=[ActionType.prepare_followup, ActionType.send_message],
@@ -432,7 +420,7 @@ def test_phase5_clean_send_journal_succeeded(reset_demo, tmp_path):
         close_journal=False,
     ).run()
     assert result.run_state == RunState.completed
-    send = result.candidate_results[0].send
+    send = next(r.send for r in result.candidate_results if r.candidate_id == "CAND-001")
     assert send and send.ok and not send.recovered
     assert send.attempt_count == 1
     action = journal.get_action(send.action_key)
