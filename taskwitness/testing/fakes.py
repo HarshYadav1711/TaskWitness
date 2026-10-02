@@ -128,6 +128,36 @@ class FakeTeamMail:
     def count_sent_by_operation_id(self, operation_id: str) -> int:
         return sum(1 for d in self.sent.values() if d.operation_id == operation_id)
 
+    def inspect_sent(self, message_id: str) -> dict[str, str]:
+        draft = self.sent.get(message_id)
+        if draft is None:
+            raise RuntimeError(f"sent not found: {message_id}")
+        return {
+            "message_id": message_id,
+            "operation_id": draft.operation_id,
+            "recipient": draft.recipient,
+            "subject": draft.subject,
+            "body": draft.body,
+        }
+
+    def inject_sent(
+        self,
+        *,
+        message_id: str,
+        recipient: str,
+        subject: str,
+        body: str,
+        operation_id: str,
+    ) -> None:
+        """Test helper: seed a Sent artifact (including duplicates for verification)."""
+        self.sent[message_id] = VisibleDraft(
+            message_id=message_id,
+            recipient=recipient,
+            subject=subject,
+            body=body,
+            operation_id=operation_id,
+        )
+
     def send_draft(
         self,
         message_id: str,

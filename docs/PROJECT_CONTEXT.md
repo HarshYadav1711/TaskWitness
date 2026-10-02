@@ -86,9 +86,9 @@ Optimize for a strong, understandable, reliable prototype—not maximum feature 
 
 ## Current implementation status
 
-**Phase 5 complete — durable journal and safe recovery.**
+**Phase 7 complete — operator control interface.**
 
-Effectful workflow actions are write-ahead journaled locally. Ambiguous send acknowledgements are classified `UNKNOWN`, reconciled against visible TeamMail Sent state by stable `operation_id`, and recovered without blind retry. Independent goal verification / evidence packs and the final operator UI are not implemented yet.
+Local FastAPI operator console (port 8010) drives the existing workflow through a web ApprovalProvider, RunControl pause/resume, progress polling, and post-run verification/evidence. Validated Plan Demo Mode is available for development without live model credentials. Assignment-wide scenario harness remains Phase 8.
 
 ## Explicitly out of scope
 

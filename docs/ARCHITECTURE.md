@@ -71,8 +71,8 @@ Operating loop: **Understand → Execute → Verify**.
 | Goal interpreter | NL → `TaskSpec` | **Implemented (Phase 3)** |
 | Authority / pause controls | Human gates | **Implemented (Phase 4)** |
 | SQLite TaskWitness journal | Durable effect history | **Implemented (Phase 5)** |
-| Verification + evidence | Postconditions + artifacts | Not implemented |
-| FastAPI + HTML/CSS/JS operator UI | Local operator surface | Not implemented |
+| Verification + evidence | Postconditions + artifacts | **Implemented (Phase 6)** |
+| Operator console | Local FastAPI + HTML/CSS/JS | **Implemented (Phase 7)** |
 
 ### Synthetic applications (Phase 1)
 
@@ -120,9 +120,29 @@ Operating loop: **Understand → Execute → Verify**.
 - **action_key** identifies the logical journaled effect within a run (stable hash of run_id + action_type + candidate + normalized payload). **operation_id** remains the TeamMail business identity used for Sent reconciliation.
 - Outcomes distinguish known success/failure from **UNKNOWN** (acknowledgement inconclusive). UNKNOWN is never treated as permission to blindly resend.
 - Recovery for UNKNOWN send: inspect visible Sent by `operation_id`. Exactly one match → `RECOVERED` (no retry). Zero conclusive matches → one controlled same-operation retry. Multiple matches or inspection unavailable → `BLOCKED`.
-- Recovery verification asks only whether this uncertain side effect already happened. Whole-goal completion verification is Phase 6.
+- Recovery verification asks only whether this uncertain side effect already happened. Whole-goal completion verification is Phase 6 (independent of recovery).
 - `RunState.recovering` is used during target-state reconciliation. A recovered send counts as completed work for run completion semantics.
 - Approval precedes attempted-action journaling: reject → `REJECTED` with `attempt_count=0` (never `IN_PROGRESS`).
+
+### Independent verification and evidence (Phase 6)
+
+- After execution finishes, a **fresh browser session** inspects TalentDesk and TeamMail final state. Executor `success` booleans, journal `SUCCEEDED`/`RECOVERED`, and the LLM are not proof of business completion.
+- Expected candidates are re-derived from `TaskSpec.source_file` + role/status via `candidate_source` — not from `BrowserRunResult.processed_candidates`.
+- Deterministic postconditions cover requested actions: stage equals target, follow-up artifact (draft or sent) by `operation_id`, exactly-one Sent when send was authorized/completed, send-absent safety when send was rejected or not requested.
+- Overall statuses: `passed` (verified complete), `incomplete` (safe but unfinished, e.g. rejection), `failed` (contradictory state), `blocked` (inspection unavailable). Workflow run state is not rewritten by verification.
+- **EvidenceWriter** is separate from **GoalVerifier**: verification determines truth; writer emits `summary.md`, `manifest.json` (SHA-256 per artifact, not self-hashed), `task_spec.json`, `verification.json`, `journal.json`, optional `progress.jsonl`, and scoped screenshots under gitignored `evidence/<run_id>/`.
+- Hashes provide package integrity checking, not cryptographic identity/signing. Paths are sanitized; run_id may not escape the evidence root.
+- Recovery reconciles uncertain side effects; final verification re-proves the business postcondition independently.
+
+### Operator console (Phase 7)
+
+- Separate process from synthetic apps: apps on `:8000`, operator on `:8010` (`python -m taskwitness.operator_demo`).
+- **In-memory ActiveRun registry** coordinates live UI state (progress, pending approval, verification summary). Durable effect history remains the TaskWitness journal.
+- **One active run at a time** for this local prototype. A second start is rejected cleanly until the current run is terminal.
+- Worker thread runs: interpret (or validated-plan demo) → `RecruitingWorkflow` with `RunControl` + `WebApprovalProvider` + progress sink + journal → close execution browser → fresh verification → evidence.
+- UI polls `GET /api/runs/{id}` ~500ms (chosen over WebSockets for local simplicity). Approval resolve is server-enforced exactly once.
+- Normal UI path is plain-English interpretation. **Validated Plan Demo Mode** (`--demo-plan`) is an explicit development banner path — not silent NL bypass; still uses the same authority/approval/verification pipeline.
+- Live UI state does not survive operator-server restart; journal durability is separate.
 
 ## Technology decisions
 
@@ -136,9 +156,9 @@ Operating loop: **Understand → Execute → Verify**.
 
 **SQLite** — used for synthetic TalentDesk/TeamMail state; planned separately later for the TaskWitness execution journal. No extra database infrastructure.
 
-**FastAPI** — hosts the synthetic apps today; planned later for the local operator/control API. Still no distributed service architecture.
+**FastAPI** — hosts the synthetic apps and the TaskWitness operator API (separate processes/ports). Still no distributed service architecture.
 
-**HTML/CSS/JS** — authored server-rendered pages for TalentDesk/TeamMail; React would add assessment overhead without proportional value. Operator UI remains later.
+**HTML/CSS/JS** — authored pages for TalentDesk/TeamMail and the operator console. No React/Next/build toolchain.
 
 **Uvicorn** — local ASGI server for the demo environment.
 
@@ -158,7 +178,7 @@ Deterministic code performs side effects. The executor never invents capabilitie
 
 ## Verification philosophy
 
-Success requires defined postconditions. Function return without exception is insufficient. Ambiguous outcomes require state inspection before any retry.
+Success requires defined postconditions inspected against target application state in a fresh verification pass. Function return without exception, executor success flags, and journal SUCCEEDED/RECOVERED are insufficient alone. Ambiguous outcomes require state inspection before any retry. Rejected requested actions are safe but incomplete — not verified complete.
 
 ## Reliability philosophy
 

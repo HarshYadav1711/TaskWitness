@@ -63,3 +63,11 @@ class BrowserSession:
     def goto(self, path: str) -> None:
         url = path if path.startswith("http") else f"{self.base_url}{path}"
         self.page.goto(url, wait_until="domcontentloaded")
+
+    def screenshot(self, path: str, *, full_page: bool = True) -> None:
+        """Capture the current page for independent verification evidence."""
+        from pathlib import Path as PathLib
+
+        target = PathLib(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        self.page.screenshot(path=str(target), full_page=full_page)

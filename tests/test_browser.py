@@ -443,3 +443,233 @@ def test_phase5_clean_send_journal_succeeded(reset_demo, tmp_path):
         mail = TeamMailBrowser(session)
         assert mail.count_sent_by_operation_id(op) == 1
     journal.close()
+
+
+def test_phase6_base_verification_passed(reset_demo, tmp_path: Path):
+    """Fresh verification session after base execute; evidence in temp dir."""
+    from taskwitness.control import AlwaysApprove
+    from taskwitness.journal import Journal
+    from taskwitness.schemas import ActionType, Authority, TaskSpec
+    from taskwitness.verification.evidence import EvidenceWriter, validate_manifest_hashes
+    from taskwitness.verification.types import CheckStatus, OverallVerificationStatus
+    from taskwitness.verification.verifier import GoalVerifier
+    from taskwitness.workflow import config_from_taskspec
+
+    base_url = reset_demo["base_url"]
+    journal = Journal(tmp_path / "j.sqlite3")
+    spec = TaskSpec(
+        source_file=str(ROOT / "data" / "candidates.csv"),
+        role="AI Engineering",
+        candidate_status="Shortlisted",
+        actions=[
+            ActionType.prepare_followup,
+            ActionType.set_stage,
+            ActionType.send_message,
+        ],
+        target_stage="Interview Ready",
+        authority=Authority(send_message=False, change_stage=True),
+    )
+    original = spec.authority.model_copy()
+    config, _ = config_from_taskspec(spec, headed=False, base_url=base_url)
+    result = RecruitingWorkflow(
+        config,
+        approval_provider=AlwaysApprove(),
+        journal=journal,
+        close_journal=False,
+    ).run()
+    assert result.run_id
+    assert spec.authority == original
+
+    shot_dir = tmp_path / "shots"
+    shot_dir.mkdir()
+    vr = GoalVerifier(
+        journal=journal,
+        base_url=base_url,
+        headed=False,
+        source_root=ROOT,
+        skip_app_wait=True,
+    ).verify(result.run_id, screenshot_dir=shot_dir)
+    package = EvidenceWriter(tmp_path / "evidence").write(
+        result=vr, journal=journal, screenshot_dir=shot_dir
+    )
+
+    assert vr.expected_candidate_ids == ["CAND-001", "CAND-002"]
+    assert vr.overall_status is OverallVerificationStatus.passed
+    assert vr.verified_complete is True
+    assert all(c.status is CheckStatus.passed for c in vr.checks)
+    assert validate_manifest_hashes(package) == []
+    assert list(shot_dir.glob("*.png"))
+    journal.close()
+
+
+def test_phase6_recovered_send_verification(reset_demo, tmp_path: Path):
+    from demo_env.db import arm_fail_after_send_commit_once, connect
+    from taskwitness.control import AlwaysApprove
+    from taskwitness.journal import ActionState, Journal
+    from taskwitness.schemas import ActionType, Authority, TaskSpec
+    from taskwitness.verification.evidence import EvidenceWriter
+    from taskwitness.verification.types import CheckStatus
+    from taskwitness.verification.verifier import GoalVerifier
+    from taskwitness.workflow import config_from_taskspec
+
+    base_url = reset_demo["base_url"]
+    conn = connect(reset_demo["db_path"])
+    try:
+        arm_fail_after_send_commit_once(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+    journal = Journal(tmp_path / "j.sqlite3")
+    spec = TaskSpec(
+        source_file=str(ROOT / "data" / "candidates.csv"),
+        role="AI Engineering",
+        candidate_status="Shortlisted",
+        actions=[
+            ActionType.prepare_followup,
+            ActionType.set_stage,
+            ActionType.send_message,
+        ],
+        target_stage="Interview Ready",
+        authority=Authority(send_message=False, change_stage=True),
+    )
+    config, _ = config_from_taskspec(spec, headed=False, base_url=base_url)
+    result = RecruitingWorkflow(
+        config,
+        approval_provider=AlwaysApprove(),
+        journal=journal,
+        close_journal=False,
+    ).run()
+    sends = [
+        a
+        for a in journal.list_actions(result.run_id)
+        if a.action_type == ActionType.send_message.value
+    ]
+    assert any(a.state is ActionState.recovered for a in sends)
+
+    shot_dir = tmp_path / "shots"
+    shot_dir.mkdir()
+    vr = GoalVerifier(
+        journal=journal,
+        base_url=base_url,
+        headed=False,
+        source_root=ROOT,
+        skip_app_wait=True,
+    ).verify(result.run_id, screenshot_dir=shot_dir)
+    package = EvidenceWriter(tmp_path / "evidence").write(
+        result=vr, journal=journal, screenshot_dir=shot_dir
+    )
+    assert vr.verified_complete is True
+    send_checks = [c for c in vr.checks if c.check_id.startswith("send_exactly_one:")]
+    assert send_checks
+    assert all(c.status is CheckStatus.passed for c in send_checks)
+    assert "sent_count=1" in send_checks[0].observed
+    assert "recovered" in (package / "journal.json").read_text(encoding="utf-8")
+    journal.close()
+
+
+def test_phase6_rejection_incomplete_verification(reset_demo, tmp_path: Path):
+    from taskwitness.control import AlwaysReject
+    from taskwitness.journal import Journal
+    from taskwitness.schemas import ActionType, Authority, TaskSpec
+    from taskwitness.verification.evidence import EvidenceWriter
+    from taskwitness.verification.types import CheckStatus, OverallVerificationStatus
+    from taskwitness.verification.verifier import GoalVerifier
+    from taskwitness.workflow import config_from_taskspec
+
+    base_url = reset_demo["base_url"]
+    journal = Journal(tmp_path / "j.sqlite3")
+    spec = TaskSpec(
+        source_file=str(ROOT / "data" / "candidates.csv"),
+        role="AI Engineering",
+        candidate_status="Shortlisted",
+        actions=[
+            ActionType.prepare_followup,
+            ActionType.set_stage,
+            ActionType.send_message,
+        ],
+        target_stage="Interview Ready",
+        authority=Authority(send_message=False, change_stage=True),
+    )
+    config, _ = config_from_taskspec(spec, headed=False, base_url=base_url)
+    result = RecruitingWorkflow(
+        config,
+        approval_provider=AlwaysReject(),
+        journal=journal,
+        close_journal=False,
+    ).run()
+
+    shot_dir = tmp_path / "shots"
+    shot_dir.mkdir()
+    vr = GoalVerifier(
+        journal=journal,
+        base_url=base_url,
+        headed=False,
+        source_root=ROOT,
+        skip_app_wait=True,
+    ).verify(result.run_id, screenshot_dir=shot_dir)
+    package = EvidenceWriter(tmp_path / "evidence").write(
+        result=vr, journal=journal, screenshot_dir=shot_dir
+    )
+    assert vr.overall_status is OverallVerificationStatus.incomplete
+    assert vr.verified_complete is False
+    assert "INCOMPLETE" in (package / "summary.md").read_text(encoding="utf-8")
+    assert any(c.status is CheckStatus.incomplete for c in vr.checks)
+    for cid in ("CAND-001", "CAND-002"):
+        absent = [c for c in vr.checks if c.check_id == f"send_absent:{cid}"]
+        assert absent and absent[0].status is CheckStatus.passed
+        assert absent[0].observed == "sent_count=0"
+    journal.close()
+
+
+def test_phase6_variation_prepare_only(reset_demo, tmp_path: Path):
+    from taskwitness.candidate_source import filter_candidates
+    from taskwitness.control import AlwaysApprove
+    from taskwitness.journal import Journal
+    from taskwitness.schemas import ActionType, Authority, TaskSpec
+    from taskwitness.verification.types import OverallVerificationStatus
+    from taskwitness.verification.verifier import GoalVerifier
+    from taskwitness.workflow import config_from_taskspec
+
+    base_url = reset_demo["base_url"]
+    journal = Journal(tmp_path / "j.sqlite3")
+    spec = TaskSpec(
+        source_file=str(ROOT / "data" / "candidates.csv"),
+        role="Backend Engineering",
+        candidate_status="Shortlisted",
+        actions=[ActionType.prepare_followup],
+        target_stage=None,
+        authority=Authority(send_message=False, change_stage=False),
+    )
+    config, _ = config_from_taskspec(spec, headed=False, base_url=base_url)
+    result = RecruitingWorkflow(
+        config,
+        approval_provider=AlwaysApprove(),
+        journal=journal,
+        close_journal=False,
+    ).run()
+
+    shot_dir = tmp_path / "shots"
+    shot_dir.mkdir()
+    vr = GoalVerifier(
+        journal=journal,
+        base_url=base_url,
+        headed=False,
+        source_root=ROOT,
+        skip_app_wait=True,
+    ).verify(result.run_id, screenshot_dir=shot_dir)
+    expected = [
+        c.candidate_id
+        for c in filter_candidates(
+            load_candidates(ROOT / "data" / "candidates.csv"),
+            role="Backend Engineering",
+            candidate_status="Shortlisted",
+        )
+    ]
+    assert vr.expected_candidate_ids == expected
+    assert vr.overall_status is OverallVerificationStatus.passed
+    assert vr.verified_complete is True
+    assert any(c.check_id.startswith("followup_artifact:") for c in vr.checks)
+    assert any(c.check_id.startswith("send_absent:") for c in vr.checks)
+    assert any(c.check_id.startswith("stage_unchanged:") for c in vr.checks)
+    journal.close()

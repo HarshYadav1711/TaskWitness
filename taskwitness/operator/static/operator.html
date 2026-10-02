@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TaskWitness Operator</title>
+  <link rel="stylesheet" href="/static/operator.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to execution trace</a>
+
+  <header class="op-header" role="banner">
+    <div class="brand">
+      <p class="wordmark">TaskWitness</p>
+      <p class="brand-sub">Operator console</p>
+    </div>
+    <div class="header-status" aria-live="polite">
+      <span class="status-kicker">Run state</span>
+      <strong id="run-state-label" class="status-value" data-state="ready">READY</strong>
+    </div>
+    <div class="header-controls">
+      <button type="button" id="btn-pause" class="btn btn-secondary" hidden>Pause</button>
+      <button type="button" id="btn-resume" class="btn btn-secondary" hidden>Resume</button>
+    </div>
+  </header>
+
+  <div id="demo-banner" class="demo-banner" hidden role="status">
+    <strong>Validated Plan Demo Mode</strong>
+    — live natural-language interpretation is not used. Starting a run executes the
+    configured TaskSpec through the same authority, approval, journal, and verification path.
+  </div>
+
+  <div class="op-layout">
+    <aside class="op-sidebar" aria-label="Run control">
+      <section class="panel">
+        <h2>Business goal</h2>
+        <p class="hint" id="goal-hint">
+          Plain English. TaskWitness interprets intent into a validated plan, then executes
+          only authorized steps against TalentDesk / TeamMail.
+        </p>
+        <label class="sr-only" for="goal-input">Business goal</label>
+        <textarea
+          id="goal-input"
+          name="goal"
+          rows="8"
+          maxlength="4000"
+          placeholder="From candidates.csv, process shortlisted AI Engineering candidates. Prepare interview follow-ups, move each to Interview Ready, and ask me before sending any message."
+        ></textarea>
+        <div class="field-meta">
+          <span>Source <code id="source-label">candidates.csv</code> (controlled, read-only)</span>
+        </div>
+        <div class="run-actions">
+          <button type="button" id="btn-run" class="btn btn-primary">Run</button>
+          <button type="button" id="btn-demo-plan" class="btn btn-secondary" hidden>
+            Start validated plan
+          </button>
+        </div>
+        <p id="start-error" class="error-text" role="alert" hidden></p>
+      </section>
+
+      <section class="panel" id="clarify-panel" hidden>
+        <h2>Clarification needed</h2>
+        <p id="clarify-text" class="clarify"></p>
+        <p class="hint">Edit the goal and run again. Multi-turn chat is not required for this prototype.</p>
+      </section>
+
+      <section class="panel meta-panel">
+        <h2>Run</h2>
+        <dl class="meta-list">
+          <div><dt>Run ID</dt><dd><code id="meta-run-id">—</code></dd></div>
+          <div><dt>Journal run</dt><dd><code id="meta-journal-id">—</code></dd></div>
+          <div><dt>Mode</dt><dd id="meta-mode">—</dd></div>
+        </dl>
+      </section>
+    </aside>
+
+    <main id="main" class="op-main">
+      <section class="panel trace-panel">
+        <div class="panel-head">
+          <h2>Execution trace</h2>
+          <p id="current-step" class="current-step" aria-live="polite">No active run.</p>
+        </div>
+        <ol id="trace-list" class="trace-list" aria-label="Progress events"></ol>
+      </section>
+
+      <section class="panel outcome-panel">
+        <div class="outcome-grid">
+          <div>
+            <h2>Execution</h2>
+            <p id="exec-summary" class="outcome-value">—</p>
+          </div>
+          <div>
+            <h2>Verification</h2>
+            <p id="verify-summary" class="outcome-value">—</p>
+            <p id="verify-message" class="outcome-msg"></p>
+          </div>
+        </div>
+
+        <div id="verify-counts" class="verify-counts" hidden></div>
+        <div id="verify-checks" class="verify-checks" hidden></div>
+
+        <div id="incomplete-box" class="incomplete-box" hidden>
+          <h3>Incomplete work</h3>
+          <ul id="incomplete-list"></ul>
+        </div>
+
+        <div id="evidence-box" class="evidence-box" hidden>
+          <h3>Evidence</h3>
+          <dl class="meta-list">
+            <div><dt>Package</dt><dd><code id="evidence-path">—</code></dd></div>
+            <div><dt>Checks</dt><dd id="evidence-check-count">—</dd></div>
+          </dl>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div
+    id="approval-dialog"
+    class="approval-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="approval-title"
+    hidden
+  >
+    <div class="approval-card">
+      <h2 id="approval-title">Approval required</h2>
+      <dl class="approval-details">
+        <div><dt>Action</dt><dd id="apr-action"></dd></div>
+        <div><dt>Candidate</dt><dd id="apr-candidate"></dd></div>
+        <div><dt>Target</dt><dd id="apr-target"></dd></div>
+        <div><dt>Reason</dt><dd id="apr-reason"></dd></div>
+        <div id="apr-op-row" hidden><dt>Operation ID</dt><dd><code id="apr-op"></code></dd></div>
+      </dl>
+      <div class="approval-actions">
+        <button type="button" id="btn-reject" class="btn btn-danger">Reject</button>
+        <button type="button" id="btn-approve" class="btn btn-approve">Approve and continue</button>
+      </div>
+      <p id="approval-error" class="error-text" role="alert" hidden></p>
+    </div>
+  </div>
+
+  <script src="/static/operator.js"></script>
+</body>
+</html>

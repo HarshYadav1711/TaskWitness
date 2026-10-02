@@ -12,55 +12,53 @@ Calm, precise, professional, evidence-oriented, human-controlled, functional, in
 
 Glassmorphism; neon/glow; generic purple AI gradients; large marketing heroes; animated blobs; meaningless animation; random KPI cards; AI sparkle iconography; robot artwork; excessive pills; excessive rounded cards; chat-interface-first layouts; generic AI SaaS aesthetics; decorative elements without operational meaning.
 
-## Planned layout
+## Implemented operator layout (Phase 7)
 
 ```
 HEADER
-  TaskWitness | run state | pause/resume
+  TaskWitness wordmark | run state | Pause / Resume
+
+OPTIONAL BANNER
+  Validated Plan Demo Mode (development only)
 
 LEFT
-  plain-English goal
-  selected source
-  run control
+  Business goal textarea
+  controlled source (candidates.csv, read-only)
+  Run / Start validated plan
+  clarification / config error
+  run metadata (run id, journal id, mode)
 
 MAIN
-  execution trace (primary focus)
-  current step
-  completed / failed / recovering steps
+  Execution trace (primary focus)
+  current step summary
 
-BOTTOM OR SIDE
-  evidence count
-  verification / postcondition status
+BOTTOM
+  Execution vs Verification summaries (separate)
+  postcondition checks by candidate
+  incomplete work (first-class)
+  evidence package path
 ```
 
-The execution trace is the main visual focus.
+Dark header strip, warm paper surfaces, system fonts, 3px radius, sparse borders. Status uses text labels plus restrained color (never color alone).
 
 ## Approval UI
 
-Must show:
+Modal dialog (`role="dialog"`, `aria-modal`):
 
-- exact action;
-- target / recipient;
-- why approval is required;
-- **Reject**;
-- **Approve and continue**.
+- exact action, candidate, target, reason, optional operation ID;
+- **Reject** (receives initial focus);
+- **Approve and continue**;
+- server-enforced one-time resolve (no Enter-to-approve shortcut).
 
-Phase 4 supplies these semantics via `ApprovalRequest` / progress events. The polished operator modal is Phase 7.
-
-## Run states (eventual UI)
+## Run states
 
 `ready` · `planning` · `running` · `paused` · `awaiting_approval` · `verifying` · `recovering` · `completed` · `partial` · `failed`
 
-Phase 4 already uses `running`, `paused`, `awaiting_approval`, `completed`, `partial`, and `failed` in the control layer. The future UI must visibly represent:
+Verification shown separately after execution:
 
-- approval target and reason;
-- paused state;
-- partial completion;
-- rejected actions left incomplete.
-
-## Phase 0 note
-
-No visual identity lock-in yet for the TaskWitness operator UI. No elaborate design tokens. Room remains for deliberate refinement in the UI phase (Phase 7). Do not invent decorative polish ahead of operational need.
+- **verified** / **incomplete** / **failed** / **blocked**
+- postcondition counts
+- “Goal verified” only when `verified_complete=true`
 
 ## Synthetic applications (Phase 1)
 

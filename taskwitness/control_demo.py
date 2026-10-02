@@ -24,6 +24,7 @@ from taskwitness.control import (
     print_progress,
 )
 from taskwitness.control.progress import ProgressEvent
+from taskwitness.journal import Journal, default_journal_path
 from taskwitness.schemas import RunState, TaskSpec
 from taskwitness.workflow import RecruitingWorkflow, config_from_taskspec
 
@@ -67,6 +68,26 @@ def build_parser() -> argparse.ArgumentParser:
             "commands on stdin (p / r / quit)."
         ),
     )
+    parser.add_argument(
+        "--journal",
+        default=None,
+        help="Journal SQLite path (default: .taskwitness/journal.sqlite3).",
+    )
+    parser.add_argument(
+        "--reset-journal",
+        action="store_true",
+        help="Wipe TaskWitness journal before running (does not reset demo_env).",
+    )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="After execution finishes, run independent verification and write evidence.",
+    )
+    parser.add_argument(
+        "--evidence-root",
+        default=None,
+        help="Evidence output root when --verify is set (default: ./evidence).",
+    )
     return parser
 
 
@@ -108,6 +129,12 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
 
+    journal_path = Path(args.journal) if args.journal else default_journal_path()
+    journal = Journal(journal_path)
+    if args.reset_journal:
+        journal.reset()
+        print(f"Journal reset: {journal_path}")
+
     control = RunControl(on_state_change=on_state)
     provider = _provider_from_args(args)
     workflow = RecruitingWorkflow(
@@ -115,10 +142,13 @@ def main(argv: list[str] | None = None) -> int:
         run_control=control,
         approval_provider=provider,
         progress=progress,
+        journal=journal,
+        close_journal=False,
     )
 
     print("TaskWitness Phase-4 control demo")
     print(f"  taskspec={args.from_taskspec}")
+    print(f"  journal={journal_path}")
     print(f"  role={config.role!r} status={config.candidate_status!r}")
     print(
         f"  actions: prepare={config.prepare_followups} "
@@ -130,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
         f"send_message={config.authority_send_message}"
     )
     print(f"  headed={config.headed} base_url={config.base_url}")
-    print("  control state: in-memory only (no durable journal / no final UI)")
+    print("  approval/pause state: in-memory; effects journaled locally")
     if args.console_control:
         print("  console control: type 'p' pause, 'r' resume, 'q' quit listener")
     print()
@@ -170,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
 
     payload = {
         "run_state": result.run_state.value,
+        "run_id": result.run_id,
         "ok": result.ok,
         "selected_candidate_ids": result.selected_candidate_ids,
         "error": result.error,
@@ -181,12 +212,54 @@ def main(argv: list[str] | None = None) -> int:
         "progress_event_count": len(collector.events),
     }
     print()
+    print(
+        "Execution completed."
+        if result.run_state in {RunState.completed, RunState.partial}
+        else "Execution did not complete."
+    )
     print(json.dumps(payload, indent=2))
-    if result.run_state == RunState.completed:
-        return 0
-    if result.run_state == RunState.partial:
-        return 0
-    return 1
+
+    exit_code = 0 if result.run_state in {RunState.completed, RunState.partial} else 1
+
+    if args.verify and result.run_id:
+        from taskwitness.verify_demo import run_verification
+        from taskwitness.verification.evidence import default_evidence_root
+        from taskwitness.verification.types import OverallVerificationStatus
+
+        evidence_root = (
+            Path(args.evidence_root) if args.evidence_root else default_evidence_root()
+        )
+        print()
+        print("Starting independent verification (fresh browser session)...")
+        vresult, package = run_verification(
+            run_id=result.run_id,
+            journal=journal,
+            base_url=args.base_url,
+            headed=args.headed,
+            evidence_root=evidence_root,
+            source_root=Path("."),
+            progress=collector,
+        )
+        print(
+            json.dumps(
+                {
+                    "overall_status": vresult.overall_status.value,
+                    "verified_complete": vresult.verified_complete,
+                    "evidence_path": str(package),
+                },
+                indent=2,
+            )
+        )
+        if vresult.verified_complete:
+            print("Goal verified.")
+        elif vresult.overall_status is OverallVerificationStatus.incomplete:
+            print("Goal incomplete (not verified complete).")
+        else:
+            print("Verification did not pass.")
+            exit_code = 1
+
+    journal.close()
+    return exit_code
 
 
 if __name__ == "__main__":

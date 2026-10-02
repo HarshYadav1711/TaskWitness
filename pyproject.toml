@@ -28,6 +28,7 @@ include = ["taskwitness*", "demo_env*"]
 
 [tool.setuptools.package-data]
 demo_env = ["static/*"]
+"taskwitness.operator" = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

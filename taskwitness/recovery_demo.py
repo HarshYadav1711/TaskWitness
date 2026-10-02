@@ -58,6 +58,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Limit CSV filter to first matching candidate via a temp CSV rewrite.",
     )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="After execution finishes, run independent verification and write evidence.",
+    )
+    parser.add_argument(
+        "--evidence-root",
+        default=None,
+        help="Evidence output root when --verify is set (default: ./evidence).",
+    )
     return parser
 
 
@@ -154,18 +164,52 @@ def main(argv: list[str] | None = None) -> int:
         ],
     }
     print()
+    print("Execution completed." if result.run_state in {RunState.completed, RunState.partial} else "Execution did not complete.")
     print(json.dumps(payload, indent=2))
 
-    journal.close()
-
+    exit_code = 1
     if result.run_state in {RunState.completed, RunState.partial}:
-        # Prefer completed after recovery of all sends.
-        if send_actions and all(a.state is ActionState.recovered for a in send_actions):
-            return 0
-        if result.run_state == RunState.completed:
-            return 0
-        return 0
-    return 1
+        exit_code = 0
+
+    if args.verify and result.run_id:
+        from taskwitness.verify_demo import run_verification
+        from taskwitness.verification.evidence import default_evidence_root
+        from taskwitness.verification.types import OverallVerificationStatus
+
+        evidence_root = (
+            Path(args.evidence_root) if args.evidence_root else default_evidence_root()
+        )
+        print()
+        print("Starting independent verification (fresh browser session)...")
+        vresult, package = run_verification(
+            run_id=result.run_id,
+            journal=journal,
+            base_url=args.base_url,
+            headed=args.headed,
+            evidence_root=evidence_root,
+            source_root=Path("."),
+            progress=collector,
+        )
+        print(
+            json.dumps(
+                {
+                    "overall_status": vresult.overall_status.value,
+                    "verified_complete": vresult.verified_complete,
+                    "evidence_path": str(package),
+                },
+                indent=2,
+            )
+        )
+        if vresult.verified_complete:
+            print("Goal verified.")
+        elif vresult.overall_status is OverallVerificationStatus.incomplete:
+            print("Goal incomplete (not verified complete).")
+        else:
+            print("Verification did not pass.")
+            exit_code = 1
+
+    journal.close()
+    return exit_code
 
 
 if __name__ == "__main__":

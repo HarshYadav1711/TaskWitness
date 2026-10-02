@@ -12,7 +12,7 @@ AI interprets intent. Deterministic software performs side effects. Independent 
 
 ## Current status
 
-**Phase 5 complete — durable journal and safe recovery.** Effectful actions are write-ahead journaled to a local TaskWitness SQLite file (separate from `demo_env`). Ambiguous TeamMail send acknowledgements become `UNKNOWN`, then reconcile against visible Sent state by `operation_id` before any retry. No final evidence pack or operator UI yet.
+**Phase 7 complete — operator control interface.** Local operator console at `http://127.0.0.1:8010/operator` (synthetic apps remain on `:8000`). Plain-English goals are the normal path when model credentials are configured. A clearly labelled Validated Plan Demo Mode exercises the full control/approval/verification path without a live LLM. One active run at a time; live UI state is in-memory; durable effects remain in the TaskWitness journal.
 
 ## Requirements
 
@@ -40,7 +40,7 @@ Copy `.env.example` values into your environment (do not commit `.env`):
 | `LLM_BASE_URL` | No | Optional OpenAI-compatible base URL; empty → client default |
 
 **Model required:** `python -m taskwitness.interpret_goal`, `python -m taskwitness.interpret_eval`
-**Model not required:** `pytest`, `demo_env`, `taskwitness.browser_demo`, `taskwitness.control_demo` (deterministic TaskSpec JSON)
+**Model not required:** `pytest`, `demo_env`, `taskwitness.browser_demo`, `taskwitness.control_demo`, `taskwitness.recovery_demo`, `taskwitness.verify_demo`, `taskwitness.operator_demo --demo-plan …` (validated-plan development mode)
 
 ## Synthetic environment
 
@@ -75,7 +75,11 @@ Optional cooperative pause listener (workflow worker thread; type `p` / `r`):
 python -m taskwitness.control_demo --from-taskspec examples/base-plan.json --approve-all --console-control --headed
 ```
 
-Control/approval/pause state is **in-memory only** for this process. There is no durable journal and no final web operator UI yet.
+Control/approval/pause state is **in-memory** for the process. Effectful actions are journaled. Optional independent verification:
+
+```bash
+python -m taskwitness.control_demo --from-taskspec examples/base-plan.json --approve-all --verify --headed
+```
 
 ## Durable journal + recovery (Phase 5)
 
@@ -95,6 +99,67 @@ python -m taskwitness.recovery_demo --from-taskspec examples/base-plan.json --re
 ```
 
 Expected: draft → approval (if authority false) → Send persists → acknowledgement interrupted → journal `UNKNOWN` → inspect Sent → `RECOVERED` without a second Send.
+
+Optional: append independent verification + evidence after recovery:
+
+```bash
+python -m taskwitness.recovery_demo --from-taskspec examples/base-plan.json --reset-journal --verify --headed
+```
+
+## Operator console (Phase 7)
+
+Prerequisite: synthetic apps running on port 8000.
+
+```bash
+python -m demo_env.seed --reset
+python -m demo_env
+```
+
+Normal path (live interpretation — requires `LLM_API_KEY` + `LLM_MODEL`):
+
+```bash
+python -m taskwitness.operator_demo --headed
+```
+
+Open [http://127.0.0.1:8010/operator](http://127.0.0.1:8010/operator). Enter a plain-English goal and click **Run**.
+
+**Validated Plan Demo Mode** (development only — not live NL interpretation):
+
+```bash
+python -m taskwitness.operator_demo --demo-plan examples/base-plan.json --headed
+```
+
+Use **Start validated plan** in the UI. The same workflow, authority gates, journal, recovery, and verification path run; the banner makes the mode obvious.
+
+Limitations (intentional):
+
+- one active operator run at a time;
+- live UI/run registry is in-memory for the operator process (journal remains durable);
+- page reload can reattach to the current in-process run; operator-server restart does not restore UI state.
+
+Optional demo pacing: `--slow-mo 100`.
+
+## Independent verification and evidence (Phase 6)
+
+Execution completion ≠ goal verified. After a run finishes (and its browser session closes), verify independently:
+
+```bash
+python -m taskwitness.verify_demo --run-id <RUN_ID> --headed
+```
+
+Evidence is written under `evidence/<run_id>/` (generated runtime artifact; gitignored):
+
+| File | Contents |
+|---|---|
+| `summary.md` | Human-readable VERIFIED / INCOMPLETE / FAILED / BLOCKED |
+| `manifest.json` | Artifact list + SHA-256 (integrity, not signing) |
+| `task_spec.json` | Immutable TaskSpec snapshot (authority unchanged) |
+| `verification.json` | Postcondition checks + overall status |
+| `journal.json` | This run’s journal export only |
+| `progress.jsonl` | Optional; present when progress events were supplied |
+| `screenshots/` | Final-state captures tied to checks |
+
+Standalone post-run verification by `run_id` always remains available.
 
 ## Natural-language interpretation (Phase 3)
 
@@ -147,5 +212,4 @@ All candidates and emails are fictional. Addresses use `example.test`. No real p
 
 ## Not yet implemented
 
-- Independent verification and evidence packs
-- Final operator UI (Phase 7)
+- Assignment-wide scenario harness (Phase 8)

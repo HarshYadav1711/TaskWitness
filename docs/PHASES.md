@@ -136,6 +136,8 @@ Implement only the phase explicitly requested. Do not advance automatically.
 
 ## Phase 6 — Independent verification and evidence
 
+**Status:** Complete
+
 **Objective:** Verify outcomes via postconditions and generate run evidence.
 
 **Planned work:** Postcondition checks against app state/artifacts; evidence pack; terminal states including `partial`.
@@ -155,6 +157,8 @@ Implement only the phase explicitly requested. Do not advance automatically.
 ---
 
 ## Phase 7 — Operator UI
+
+**Status:** Complete
 
 **Objective:** Add a calm operator control interface aligned with `DESIGN.md`.
 
