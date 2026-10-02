@@ -59,7 +59,7 @@ def test_operation_id_is_stable_and_not_random():
     assert a.startswith("tw-prepare_followup-cand-001-")
 
 
-def test_taskspec_send_message_is_deferred():
+def test_taskspec_send_message_preserved_with_false_authority():
     spec = TaskSpec(
         source_file="data/candidates.csv",
         role="AI Engineering",
@@ -73,10 +73,12 @@ def test_taskspec_send_message_is_deferred():
         authority=Authority(send_message=False, change_stage=True),
     )
     config, deferred = config_from_taskspec(spec, headed=False)
+    assert deferred == []
     assert config.prepare_followups is True
     assert config.target_stage == "Interview Ready"
-    assert "send_message:deferred_until_authority_phase" in deferred
-    assert "send_message:deferred_until_authority_phase" in config.deferred_actions
+    assert config.send_message_requested is True
+    assert config.authority_send_message is False
+    assert config.authority_change_stage is True
 
 
 def test_set_stage_with_change_stage_true_may_execute():
@@ -90,11 +92,12 @@ def test_set_stage_with_change_stage_true_may_execute():
     )
     config, deferred = config_from_taskspec(spec, headed=False)
     assert config.target_stage == "Interview Ready"
-    assert "set_stage:deferred_until_authority_phase" not in deferred
-    assert config.deferred_actions == []
+    assert config.set_stage_requested is True
+    assert config.authority_change_stage is True
+    assert deferred == []
 
 
-def test_set_stage_with_change_stage_false_is_explicitly_deferred():
+def test_set_stage_with_change_stage_false_remains_requested_for_approval():
     spec = TaskSpec(
         source_file="data/candidates.csv",
         role="AI Engineering",
@@ -104,14 +107,14 @@ def test_set_stage_with_change_stage_false_is_explicitly_deferred():
         authority=Authority(send_message=False, change_stage=False),
     )
     config, deferred = config_from_taskspec(spec, headed=False)
-    assert config.target_stage is None
-    assert "set_stage:deferred_until_authority_phase" in deferred
-    assert "set_stage:deferred_until_authority_phase" in config.deferred_actions
-    # Requested action must remain visible as deferred, not silently dropped.
+    assert config.target_stage == "Interview Ready"
+    assert config.set_stage_requested is True
+    assert config.authority_change_stage is False
+    assert deferred == []
     assert ActionType.set_stage in spec.actions
 
 
-def test_send_message_with_send_authority_false_is_explicitly_deferred_never_enabled():
+def test_send_message_with_send_authority_false_remains_requested_for_approval():
     spec = TaskSpec(
         source_file="data/candidates.csv",
         role="AI Engineering",
@@ -122,7 +125,7 @@ def test_send_message_with_send_authority_false_is_explicitly_deferred_never_ena
     )
     config, deferred = config_from_taskspec(spec, headed=False)
     assert config.prepare_followups is True
-    assert "send_message:deferred_until_authority_phase" in deferred
+    assert config.send_message_requested is True
+    assert config.authority_send_message is False
     assert ActionType.send_message in spec.actions
-    # Phase 2 WorkflowConfig has no send flag/path — drafts only.
-    assert not hasattr(config, "send_messages")
+    assert deferred == []

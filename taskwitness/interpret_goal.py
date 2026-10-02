@@ -1,7 +1,7 @@
 """Interpret a plain-English recruiting goal (Phase 3).
 
 Default: interpret only — no browser side effects.
-Optional --execute: hand READY TaskSpec to the existing Phase 2 workflow.
+Optional --execute: hand READY TaskSpec to the Phase 4 control-aware workflow.
 """
 
 from __future__ import annotations
@@ -10,15 +10,14 @@ import argparse
 import json
 import sys
 from dataclasses import asdict
-from pathlib import Path
 
+from taskwitness.control import AlwaysApprove, AlwaysReject, TerminalApprovalProvider
 from taskwitness.interpretation import (
     GoalInterpreter,
     InterpretationResult,
     InterpretationStatus,
     ModelClientError,
 )
-from taskwitness.interpretation.client import ModelConfig
 from taskwitness.workflow import RecruitingWorkflow, config_from_taskspec
 
 
@@ -30,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--execute",
         action="store_true",
-        help="If READY, run the existing Phase-2 browser workflow (never sends).",
+        help="If READY, run the browser workflow with Phase-4 authority gates.",
     )
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument(
@@ -40,6 +39,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Browser mode when --execute is set (default: headed).",
     )
     parser.add_argument("--slow-mo", type=int, default=0)
+    approval = parser.add_mutually_exclusive_group()
+    approval.add_argument(
+        "--approve-all",
+        action="store_true",
+        help="Non-interactive approve for gated actions during --execute.",
+    )
+    approval.add_argument(
+        "--reject-all",
+        action="store_true",
+        help="Non-interactive reject for gated actions during --execute.",
+    )
     return parser
 
 
@@ -81,23 +91,35 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     assert result.task_spec is not None
-    config, _deferred = config_from_taskspec(
+    # Preserve original authority for post-run inspection.
+    original_authority = result.task_spec.authority.model_copy()
+    config, _ = config_from_taskspec(
         result.task_spec,
         headed=args.headed,
         base_url=args.base_url,
     )
     config.slow_mo_ms = args.slow_mo
-    run = RecruitingWorkflow(config).run()
+    if args.approve_all:
+        provider = AlwaysApprove()
+    elif args.reject_all:
+        provider = AlwaysReject()
+    else:
+        provider = TerminalApprovalProvider()
+    run = RecruitingWorkflow(config, approval_provider=provider).run()
+    assert result.task_spec.authority == original_authority
     print(json.dumps({
         "execution": {
+            "run_state": run.run_state.value,
             "ok": run.ok,
             "selected_candidate_ids": run.selected_candidate_ids,
-            "deferred_actions": run.deferred_actions,
             "error": run.error,
+            "authority_unchanged": original_authority.model_dump(),
             "candidates": [asdict(c) for c in run.candidate_results],
         }
     }, indent=2))
-    return 0 if run.ok else 4
+    if run.run_state.value in {"completed", "partial"}:
+        return 0
+    return 4
 
 
 if __name__ == "__main__":

@@ -45,9 +45,18 @@ Must show:
 - **Reject**;
 - **Approve and continue**.
 
+Phase 4 supplies these semantics via `ApprovalRequest` / progress events. The polished operator modal is Phase 7.
+
 ## Run states (eventual UI)
 
 `ready` · `planning` · `running` · `paused` · `awaiting_approval` · `verifying` · `recovering` · `completed` · `partial` · `failed`
+
+Phase 4 already uses `running`, `paused`, `awaiting_approval`, `completed`, `partial`, and `failed` in the control layer. The future UI must visibly represent:
+
+- approval target and reason;
+- paused state;
+- partial completion;
+- rejected actions left incomplete.
 
 ## Phase 0 note
 

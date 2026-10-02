@@ -91,11 +91,13 @@ def test_ask_before_stage_preserves_action_and_false_authority():
     assert ActionType.set_stage in result.task_spec.actions
     assert result.task_spec.authority.change_stage is False
     config, deferred = config_from_taskspec(result.task_spec, headed=False)
-    assert config.target_stage is None
-    assert "set_stage:deferred_until_authority_phase" in deferred
+    assert config.target_stage == "Interview Ready"
+    assert config.set_stage_requested is True
+    assert config.authority_change_stage is False
+    assert deferred == []
 
 
-def test_explicit_send_authority_true_is_representable_but_execution_defers_send():
+def test_explicit_send_authority_true_is_representable_for_execution():
     payload = _ready(
         _base_spec_dict(
             actions=["prepare_followup", "send_message"],
@@ -106,8 +108,10 @@ def test_explicit_send_authority_true_is_representable_but_execution_defers_send
     result = GoalInterpreter(FakeModelClient(payload)).interpret("send authorized")
     assert result.task_spec.authority.send_message is True
     config, deferred = config_from_taskspec(result.task_spec, headed=False)
-    assert "send_message:deferred_until_authority_phase" in deferred
+    assert config.send_message_requested is True
+    assert config.authority_send_message is True
     assert config.target_stage is None
+    assert deferred == []
 
 
 def test_missing_field_rejected():

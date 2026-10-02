@@ -86,9 +86,9 @@ Optimize for a strong, understandable, reliable prototype—not maximum feature 
 
 ## Current implementation status
 
-**Phase 3 complete — natural-language goal interpretation.**
+**Phase 4 complete — human control and authority.**
 
-Plain-English goals are interpreted into validated `TaskSpec` plans (schema + policy). Deterministic Playwright execution remains separate. No approval UI, journal, or independent verification subsystem yet.
+Validated `TaskSpec` plans execute through a control-aware workflow: authority checks, action-scoped human approval, cooperative pause/resume, and an in-memory progress event stream. TeamMail send runs through the visible UI when approved. Control state is not durable. No journal, independent verification, or final operator UI yet.
 
 ## Explicitly out of scope
 

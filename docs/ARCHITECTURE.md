@@ -69,7 +69,7 @@ Operating loop: **Understand → Execute → Verify**.
 | Synthetic TalentDesk / TeamMail | Controlled apps | **Implemented (Phase 1)** |
 | Playwright executor | Visible browser ops | **Implemented (Phase 2)** |
 | Goal interpreter | NL → `TaskSpec` | **Implemented (Phase 3)** |
-| Authority / pause controls | Human gates | Not implemented |
+| Authority / pause controls | Human gates | **Implemented (Phase 4)** |
 | SQLite TaskWitness journal | Durable effect history | Not implemented |
 | Verification + evidence | Postconditions + artifacts | Not implemented |
 | FastAPI + HTML/CSS/JS operator UI | Local operator surface | Not implemented |
@@ -89,17 +89,29 @@ Operating loop: **Understand → Execute → Verify**.
 - Browser adapters (`TalentDeskBrowser`, `TeamMailBrowser`) expose domain operations; Playwright stays inside that boundary.
 - Candidate selection is read from `data/candidates.csv` via `candidate_source` — never from `demo_env` SQLite.
 - TaskWitness production browser/workflow code must not import `demo_env.db` or open `demo_env.sqlite3` to mutate or decide business state.
-- Immediate post-action UI confirmation (e.g. stage notice, draft saved) is allowed for reliable automation. That is **not** the future independent verification/evidence subsystem.
-- Phase 2 workflows prepare TeamMail **drafts** only. Autonomous send is deferred until the authority phase.
+- Immediate post-action UI confirmation (e.g. stage notice, draft saved, sent detail) is allowed for reliable automation. That is **not** the future independent verification/evidence subsystem.
+- Phase 2 introduced draft preparation. Phase 4 adds authority-gated send through the visible TeamMail UI.
 
 ### Natural-language interpretation (Phase 3)
 
 - Narrow OpenAI-compatible client (`LLM_BASE_URL` optional, `LLM_API_KEY` + `LLM_MODEL` required for live interpretation).
 - Model output is **untrusted**. It never calls Playwright, invents selectors, or proves success.
 - Flow: goal → model JSON → local envelope parse → `TaskSpec.model_validate` → deterministic environment policy → `InterpretationResult`.
-- Only READY `TaskSpec` values may hand off to the existing Phase 2 workflow (`config_from_taskspec` → `RecruitingWorkflow`).
+- Only READY `TaskSpec` values may hand off to the control-aware workflow (`config_from_taskspec` → `RecruitingWorkflow`).
 - Ambiguous goals return `needs_clarification` (no execution). Policy rejects unsafe sources/roles/stages without silent repair.
-- Phase 3 execution still defers all `send_message` and false-authority `set_stage` (approval UI is Phase 4).
+- Phase 3 produces intent only. Phase 4 enforces authority gates; the model never grants approval.
+
+### Human control and authority (Phase 4)
+
+- **Requested actions ≠ autonomous permission.** `actions` may include `send_message` / `set_stage` while the matching `authority` flag is false; execution must obtain human approval immediately before that side effect.
+- **ApprovalProvider** boundary (`request_approval` → `APPROVED` | `REJECTED`). Implementations: `AlwaysApprove` / `AlwaysReject` / `ScriptedApprovalProvider` (tests), `TerminalApprovalProvider` (dev stdin). `RecruitingWorkflow` never calls `input()` directly.
+- Approvals are **action-scoped and one-time**. Approving CAND-001's send does not authorize CAND-002 or rewrite `TaskSpec.authority`.
+- **RunControl** provides cooperative pause/resume via standard library synchronization. Pause stops at safe checkpoints (before next candidate / stage / draft / send)—not mid-Playwright click.
+- Precedence: `awaiting_approval` is its own halt; a pause requested during approval remains pending and is honored at the next checkpoint after approval resolves.
+- **Progress events** are an in-memory sink/callback stream (timestamp, run state, optional candidate/action, message) for tests and the future Phase 7 UI. Not durable event sourcing.
+- **TeamMail send** is a browser domain operation (`send_draft`) through the visible Send control. The draft's `operation_id` is preserved from draft → sent. Ambiguous acknowledgement is surfaced as unknown/failed without blind retry (Phase 5 owns recovery).
+- Control/approval/progress state is **in-memory only**. No TaskWitness SQLite journal yet.
+- Rejection leaves completed work intact and yields `PARTIAL` when requested work remains incomplete—not a false `FAILED`.
 
 ## Technology decisions
 

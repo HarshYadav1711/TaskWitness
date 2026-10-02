@@ -92,6 +92,8 @@ Implement only the phase explicitly requested. Do not advance automatically.
 
 ## Phase 4 — Human control and authority
 
+**Status:** Complete
+
 **Objective:** Enforce authority gates and execution controls (pause / approval).
 
 **Planned work:** `awaiting_approval` transitions; pause/resume; deny → visible partial outcomes.

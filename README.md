@@ -12,7 +12,7 @@ AI interprets intent. Deterministic software performs side effects. Independent 
 
 ## Current status
 
-**Phase 3 complete — natural-language goal interpretation.** Plain-English goals become validated `TaskSpec` plans via an OpenAI-compatible model boundary, then local schema + policy checks. Deterministic Playwright workflow is unchanged. Messages are still never sent (deferred until Phase 4).
+**Phase 4 complete — human control and authority.** Requested actions and authority remain separate. False-authority stage/send actions request human approval immediately before the side effect. Cooperative pause/resume and an in-memory progress stream are available. Control state is process-local (not durable). No final operator UI yet.
 
 ## Requirements
 
@@ -40,7 +40,7 @@ Copy `.env.example` values into your environment (do not commit `.env`):
 | `LLM_BASE_URL` | No | Optional OpenAI-compatible base URL; empty → client default |
 
 **Model required:** `python -m taskwitness.interpret_goal`, `python -m taskwitness.interpret_eval`
-**Model not required:** `pytest`, `demo_env`, `taskwitness.browser_demo` (deterministic WorkflowConfig / TaskSpec JSON)
+**Model not required:** `pytest`, `demo_env`, `taskwitness.browser_demo`, `taskwitness.control_demo` (deterministic TaskSpec JSON)
 
 ## Synthetic environment
 
@@ -54,6 +54,29 @@ python -m demo_env
 | TalentDesk | http://127.0.0.1:8000/talentdesk |
 | TeamMail | http://127.0.0.1:8000/teammail |
 
+## Phase 4 control demo (approval / progress)
+
+Reset + start the demo apps, then:
+
+```bash
+python -m taskwitness.control_demo --from-taskspec examples/base-plan.json --headed
+```
+
+Interactive terminal approval for gated sends. Non-interactive options:
+
+```bash
+python -m taskwitness.control_demo --from-taskspec examples/base-plan.json --approve-all --headed
+python -m taskwitness.control_demo --from-taskspec examples/base-plan.json --reject-all --headed
+```
+
+Optional cooperative pause listener (workflow worker thread; type `p` / `r`):
+
+```bash
+python -m taskwitness.control_demo --from-taskspec examples/base-plan.json --approve-all --console-control --headed
+```
+
+Control/approval/pause state is **in-memory only** for this process. There is no durable journal and no final web operator UI yet.
+
 ## Natural-language interpretation (Phase 3)
 
 Interpret only (no browser):
@@ -62,19 +85,15 @@ Interpret only (no browser):
 python -m taskwitness.interpret_goal --goal "From candidates.csv, process shortlisted AI Engineering candidates in TalentDesk. Prepare an interview follow-up, move each matching candidate to Interview Ready, and ask me before sending any message."
 ```
 
-Optional execute (READY plans only → existing Phase 2 workflow; never sends):
+Optional execute (READY plans → Phase 4 workflow with approval gates):
 
 ```bash
-python -m taskwitness.interpret_goal --execute --goal "..."
-```
-
-Optional live fixture eval (no Playwright):
-
-```bash
-python -m taskwitness.interpret_eval
+python -m taskwitness.interpret_goal --execute --approve-all --goal "..."
 ```
 
 ## Deterministic browser demo (no model)
+
+Drafts + authorized stages (no send unless TaskSpec + approval path):
 
 ```bash
 python -m taskwitness.browser_demo ^
@@ -109,7 +128,6 @@ All candidates and emails are fictional. Addresses use `example.test`. No real p
 
 ## Not yet implemented
 
-- Authority gates, pause/resume runtime (approval UI)
-- Durable TaskWitness execution journal and recovery
+- Durable TaskWitness execution journal and ambiguous-outcome recovery
 - Independent verification and evidence packs
-- Operator UI
+- Final operator UI (Phase 7)
