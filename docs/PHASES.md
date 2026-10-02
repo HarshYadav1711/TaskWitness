@@ -180,6 +180,8 @@ Implement only the phase explicitly requested. Do not advance automatically.
 
 ## Phase 8 — Assignment scenarios and tests
 
+**Status:** Complete
+
 **Objective:** Cover assignment execution scenarios as automated and documented checks.
 
 **Planned work:** Base, variation, and failure/recovery scenario harnesses.

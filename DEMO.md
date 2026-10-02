@@ -2,19 +2,43 @@
 
 ## Preconditions
 
-- Phase 7 complete: NL interpretation + Playwright workflow + human control + journal/recovery + verification/evidence + operator UI.
+- Phase 8 complete: product through operator UI + assessment acceptance harness.
 - Synthetic data only (`data/candidates.csv`, `example.test`).
 - Install Chromium once: `python -m playwright install chromium`
 - For live interpretation, set `LLM_API_KEY` and `LLM_MODEL` (optional `LLM_BASE_URL`).
 
-Reset and start apps when executing browser work:
+Live-provider interpretation check for submission/video: **pending** until credentials are used for a real pass (base, paraphrase, variation, ask-before-send/stage, underspecified, unsupported). Do not invent results.
+
+## Phase 8 assessment scenarios
+
+Deterministic (Validated Plan Demo Mode — not live NL):
+
+```bash
+python -m taskwitness.assessment_accept --scenario base
+python -m taskwitness.assessment_accept --scenario variation
+python -m taskwitness.assessment_accept --scenario recovery
+python -m taskwitness.assessment_accept --scenario rejection
+python -m taskwitness.assessment_accept --scenario pause
+```
+
+Headed rehearsal for the three required demos:
+
+```bash
+python -m taskwitness.assessment_accept --scenario base --headed --slow-mo 60
+python -m taskwitness.assessment_accept --scenario variation --headed --slow-mo 40
+python -m taskwitness.assessment_accept --scenario recovery --headed --slow-mo 60
+```
+
+The harness resets synthetic state, starts isolated demo_env + operator processes, drives the operator UI, asserts outcomes, and cleans up.
+
+## Phase 7 operator UI (headed)
+
+If running the operator manually (outside the assessment harness), reset and start apps first:
 
 ```bash
 python -m demo_env.seed --reset
 python -m demo_env
 ```
-
-## Phase 7 operator UI (headed)
 
 Start the operator (Validated Plan Demo Mode — development only; not live NL):
 

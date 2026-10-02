@@ -144,6 +144,12 @@ Operating loop: **Understand → Execute → Verify**.
 - Normal UI path is plain-English interpretation. **Validated Plan Demo Mode** (`--demo-plan`) is an explicit development banner path — not silent NL bypass; still uses the same authority/approval/verification pipeline.
 - Live UI state does not survive operator-server restart; journal durability is separate.
 
+### Assessment acceptance harness (Phase 8)
+
+- `taskwitness.assessment_accept` orchestrates isolated demo_env + operator processes, drives the operator UI (Validated Plan Demo Mode), and asserts assignment scenarios: base, variation, recovery, rejection, pause.
+- Scenario isolation resets synthetic DB + journal per run. Assertions may inspect synthetic DB for outcomes; business mutations still occur only through Playwright.
+- Optional `--live-model` interprets goals when credentials exist; otherwise reports SKIPPED. Automated pytest never requires a live model.
+
 ## Technology decisions
 
 **Python 3.12** — one primary language for automation and typed AI-adjacent workflows; strong fit for Playwright and assessment ownership.

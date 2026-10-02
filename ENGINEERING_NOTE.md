@@ -38,8 +38,8 @@ _To be completed for submission._
 
 ## Limitations
 
-Validated Plan Demo Mode proves operator control/runtime without live model credentials; it does not claim live natural-language interpretation quality. One active run at a time. Operator UI state does not survive operator-server restart. Assignment-wide scenario harness is Phase 8.
+Validated Plan Demo Mode proves operator control/runtime without live model credentials; it does not claim live natural-language interpretation quality. One active run at a time. Operator UI state does not survive operator-server restart. Phase 8 assessment harness runs assignment scenarios through the operator UI with isolated processes; live-provider pre-submission checks remain separate and unresolved until credentials are actually used.
 
 ## What I would build next
 
-Phase 8 — assignment scenarios and tests, per `docs/PHASES.md`.
+Phase 9 — hardening and adversarial review, per `docs/PHASES.md`.

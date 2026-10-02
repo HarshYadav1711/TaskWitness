@@ -86,9 +86,9 @@ Optimize for a strong, understandable, reliable prototype—not maximum feature 
 
 ## Current implementation status
 
-**Phase 7 complete — operator control interface.**
+**Phase 8 complete — assignment scenarios and acceptance harness.**
 
-Local FastAPI operator console (port 8010) drives the existing workflow through a web ApprovalProvider, RunControl pause/resume, progress polling, and post-run verification/evidence. Validated Plan Demo Mode is available for development without live model credentials. Assignment-wide scenario harness remains Phase 8.
+Deterministic assessment scenarios (`base`, `variation`, `recovery`, plus `rejection` / `pause`) run through the operator UI in Validated Plan Demo Mode via `python -m taskwitness.assessment_accept`. Live natural-language provider checks remain a pre-submission manual requirement and are not claimed complete by Phase 8 automation. Hardening/adversarial review is Phase 9.
 
 ## Explicitly out of scope
 

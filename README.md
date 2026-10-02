@@ -12,7 +12,7 @@ AI interprets intent. Deterministic software performs side effects. Independent 
 
 ## Current status
 
-**Phase 7 complete — operator control interface.** Local operator console at `http://127.0.0.1:8010/operator` (synthetic apps remain on `:8000`). Plain-English goals are the normal path when model credentials are configured. A clearly labelled Validated Plan Demo Mode exercises the full control/approval/verification path without a live LLM. One active run at a time; live UI state is in-memory; durable effects remain in the TaskWitness journal.
+**Phase 8 complete — assignment scenarios and acceptance harness.** Reproducible assessment scenarios (`base`, `variation`, `recovery`, `rejection`, `pause`) run through the operator UI in Validated Plan Demo Mode. Live LLM interpretation checks remain pending until credentials are used for a real pre-submission pass.
 
 ## Requirements
 
@@ -139,6 +139,31 @@ Limitations (intentional):
 
 Optional demo pacing: `--slow-mo 100`.
 
+## Assessment acceptance (Phase 8)
+
+Deterministic assignment scenarios (Validated Plan Demo Mode — not live NL):
+
+```bash
+python -m taskwitness.assessment_accept --scenario base
+python -m taskwitness.assessment_accept --scenario variation
+python -m taskwitness.assessment_accept --scenario recovery
+python -m taskwitness.assessment_accept --scenario all
+```
+
+Headed rehearsal:
+
+```bash
+python -m taskwitness.assessment_accept --scenario base --headed --slow-mo 60
+```
+
+Optional live-model interpret check (skipped without credentials):
+
+```bash
+python -m taskwitness.assessment_accept --scenario base --live-model
+```
+
+See [docs/ASSESSMENT_MAP.md](docs/ASSESSMENT_MAP.md) for requirement → scenario mapping.
+
 ## Independent verification and evidence (Phase 6)
 
 Execution completion ≠ goal verified. After a run finishes (and its browser session closes), verify independently:
@@ -212,4 +237,6 @@ All candidates and emails are fictional. Addresses use `example.test`. No real p
 
 ## Not yet implemented
 
-- Assignment-wide scenario harness (Phase 8)
+- Live-provider pre-submission interpretation check (manual; credentials required)
+- Final demo video / submission polish (Phase 10)
+- Adversarial hardening sweep (Phase 9)
